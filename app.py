@@ -56,38 +56,24 @@ def check_auth():
         html,body,[class*="css"]{{font-family:'Raleway',sans-serif!important}}
         [data-testid="stHeader"]{{display:none}}
         [data-testid="stAppViewContainer"]{{
-          background:#202031;
-          overflow:hidden;
+          background:#202031 !important;
         }}
-        [data-testid="stAppViewContainer"]::before {{
-          content:'';
-          position:fixed;
-          inset:0;
-          background:#202031;
-          z-index:0;
-        }}
-        [data-testid="stAppViewContainer"]::after {{
-          content:'';
-          position:fixed;
-          inset:0;
-          z-index:0;
-          background:
+        .stApp{{
+          background: #202031;
+          background-image:
             radial-gradient(ellipse 65% 50% at 90% 10%, rgba(88,117,121,0.55) 0%, transparent 60%),
             radial-gradient(ellipse 55% 45% at 10% 90%, rgba(88,117,121,0.35) 0%, transparent 55%),
             radial-gradient(ellipse 40% 35% at 80% 80%, rgba(251,224,160,0.20) 0%, transparent 50%),
             radial-gradient(ellipse 30% 30% at 15% 20%, rgba(251,224,160,0.12) 0%, transparent 45%);
           animation: nebula 12s ease-in-out infinite alternate;
+          min-height: 100vh;
         }}
         @keyframes nebula {{
-          0%   {{ background-position: 90% 10%, 10% 90%, 80% 80%, 15% 20%; opacity:1; }}
-          25%  {{ background-position: 85% 15%, 15% 85%, 75% 85%, 20% 15%; opacity:0.85; }}
-          50%  {{ background-position: 80% 20%, 20% 80%, 70% 75%, 25% 25%; opacity:1; }}
-          75%  {{ background-position: 88% 8%,  12% 88%, 78% 82%, 18% 18%; opacity:0.9; }}
-          100% {{ background-position: 92% 5%,  8%  92%, 82% 78%, 12% 22%; opacity:1; }}
+          0%   {{ background-size: 100% 100%; filter: blur(0px); }}
+          50%  {{ background-size: 120% 120%; filter: blur(2px); }}
+          100% {{ background-size: 105% 108%; filter: blur(0px); }}
         }}
-        .stApp,.block-container{{position:relative;z-index:1}}
-        .stApp{{background:transparent}}
-        .block-container{{padding-top:0!important}}
+        .block-container{{padding-top:0!important;position:relative;z-index:2}}
         .login-wrap{{max-width:380px;margin:0 auto;padding-top:18vh;text-align:center}}
         .tagline{{color:#587579;font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;
                   margin-top:14px;margin-bottom:52px;font-family:'Raleway',sans-serif;font-weight:600}}
@@ -99,7 +85,7 @@ def check_auth():
           letter-spacing:.08em!important}}
         div.stButton>button:hover{{background:#587579!important;color:white!important}}
         .stTextInput input{{
-          background:rgba(42,45,69,0.7)!important;border:1.5px solid #3a3d55!important;
+          background:rgba(42,45,69,0.8)!important;border:1.5px solid #3a3d55!important;
           color:white!important;border-radius:6px!important;
           font-family:'Raleway',sans-serif!important;padding:14px!important}}
         .stTextInput input::placeholder{{color:#666!important}}
