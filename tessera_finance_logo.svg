@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400.28 377.85">
+  <defs>
+    <style>
+      .cls-1 {
+        letter-spacing: -.07em;
+      }
+
+      .cls-2 {
+        letter-spacing: -.04em;
+      }
+
+      .cls-3 {
+        fill: #762d35;
+        font-family: Ailerons-Regular, Ailerons;
+        font-size: 300px;
+      }
+
+      .cls-4 {
+        letter-spacing: -.03em;
+      }
+
+      .cls-5 {
+        letter-spacing: -.02em;
+      }
+
+      .cls-6 {
+        letter-spacing: -.05em;
+      }
+    </style>
+  </defs>
+  <text class="cls-3" transform="translate(120.01 276.36)"><tspan class="cls-5" x="0" y="0">T</tspan><tspan class="cls-2" x="157.62" y="0">E</tspan><tspan class="cls-6" x="327.08" y="0">S</tspan><tspan class="cls-1" x="491.42" y="0">S</tspan><tspan class="cls-2" x="650.84" y="0">E</tspan><tspan class="cls-4" x="820.3" y="0">R</tspan><tspan x="992.26" y="0">A</tspan></text>
+</svg>
