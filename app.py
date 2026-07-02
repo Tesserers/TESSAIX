@@ -211,36 +211,21 @@ def render_steps(current):
 def render_home():
     tessaix_b64 = make_ailerons_png("TESSAIX", color=(255,255,255), size=58, width=520, height=84)
 
-    # Load all logos as base64 data URIs
-    def _img_b64(path, svg=False):
-        try:
-            with open(str(path),'rb') as f: data = f.read()
-            mime = "image/svg+xml" if svg else "image/png"
-            return f"data:{mime};base64,{base64.b64encode(data).decode()}"
-        except: return ""
+    # Generate ALL logos via Ailerons PIL — no SVG data URIs in HTML (too large for Streamlit)
+    tessera_header = make_ailerons_png("TESSERA", color=(255,255,255), size=24, width=220, height=38)
 
-    hc_src  = _img_b64(_find("logo_tessera_human_capital_.svg"), svg=True)
-    fi_src  = _img_b64(_find("tessera_finance_logo.svg"), svg=True)
-    cd_src  = _img_b64(_find("costdown_logo.png"))
-    lt_src  = _img_b64(_find("logo_LT_.svg"), svg=True)
+    # Human Capital logo: "TESSERA" navy + "HUMAN CAPITAL" small
+    hc_logo   = make_ailerons_png("TESSERA", color=(255,255,255), size=28, width=260, height=44)
+    fi_logo   = make_ailerons_png("TESSERA", color=(118,45,53),   size=28, width=260, height=44)  # granate
 
-    # HC logo for header — white version via PIL (SVG is navy, need white for dark bg)
-    tessera_header = make_ailerons_png("TESSERA", color=(255,255,255), size=26, width=240, height=40)
-
-    # Build logo HTML snippets BEFORE the f-string
-    hc_img = f'<img src="{hc_src}" style="height:38px;margin-bottom:12px;filter:brightness(0) invert(1);opacity:.9">' if hc_src else '<div style="font-size:26px;margin-bottom:12px">👥</div>'
-    fi_img = f'<img src="{fi_src}" style="height:38px;margin-bottom:12px;filter:brightness(0) invert(1);opacity:.4">' if fi_src else '<div style="font-size:26px;margin-bottom:12px;opacity:.4">🏦</div>'
-    cd_img = f'<img src="{cd_src}" style="height:28px;margin-bottom:12px;opacity:.35;filter:brightness(0) invert(1)">' if cd_src else '<div style="font-size:26px;margin-bottom:12px;opacity:.4">💰</div>'
-    lt_img = f'<img src="{lt_src}" style="height:24px;margin-bottom:12px;opacity:.35;filter:brightness(0) invert(1)">' if lt_src else '<div style="font-size:26px;margin-bottom:12px;opacity:.4">📊</div>'
-
-    # CSS block
+    # CSS
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;600;700;800;900&display=swap');
     [data-testid="stAppViewContainer"]{background:#202031!important}
     [data-testid="stHeader"]{display:none}
-    .stApp{background:#202031!important}
-    .block-container{padding-top:0!important}
+    .stApp{background:#202031!important;min-height:100vh}
+    .block-container{padding-top:0!important;position:relative;z-index:2}
     .neb{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}
     .neb1{width:550px;height:450px;top:-60px;right:-80px;background:rgba(88,117,121,0.4);animation:orb1 5s ease-in-out infinite alternate}
     .neb2{width:450px;height:380px;bottom:-40px;left:-60px;background:rgba(88,117,121,0.28);animation:orb2 6s ease-in-out infinite alternate}
@@ -250,95 +235,131 @@ def render_home():
     @keyframes orb2{0%{transform:translate(0,0) scale(1)}100%{transform:translate(70px,-70px) scale(1.25)}}
     @keyframes orb3{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-60px,50px) scale(0.85)}}
     @keyframes orb4{0%{transform:translate(0,0) scale(1)}100%{transform:translate(50px,60px) scale(1.15)}}
-    .home-wrap{position:relative;z-index:2;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px}
-    .card-grid{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:36px 0 24px}
-    .card{position:relative;overflow:hidden;background:rgba(255,255,255,0.04);
-      border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:28px 24px;
-      width:200px;text-align:center;cursor:default;
-      transition:border-color .3s, transform .3s;backdrop-filter:blur(4px)}
-    .card::before{content:'';position:absolute;inset:0;border-radius:14px;opacity:0;transition:opacity .4s;z-index:0}
-    .card:hover{border-color:rgba(88,117,121,0.8);transform:translateY(-3px)}
-    .card:hover::before{opacity:1}
-    .card-hc::before{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(88,117,121,0.35) 0%,transparent 70%)}
-    .card-fi::before{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(88,117,121,0.2) 0%,transparent 70%)}
-    .card-cd::before{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(251,224,160,0.2) 0%,transparent 70%)}
-    .card-lt::before{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(42,61,101,0.4) 0%,transparent 70%)}
-    .card-content{position:relative;z-index:1}
-    .card-desc{font-size:.68rem;line-height:1.6;font-family:'Raleway',sans-serif}
-    .card-title{font-size:.75rem;font-weight:700;letter-spacing:.06em;margin-bottom:6px;font-family:'Raleway',sans-serif}
-    .card-badge{display:inline-block;margin-top:10px;font-size:.6rem;font-weight:700;
+    .card-badge{display:inline-block;margin-top:8px;font-size:.6rem;font-weight:700;
       letter-spacing:.1em;text-transform:uppercase;
       background:rgba(251,224,160,0.15);color:#FBE0A0;border-radius:3px;padding:2px 8px}
-    .bottom-txt{color:rgba(240,232,222,0.3);font-size:.65rem;letter-spacing:.15em;
-      font-family:'Raleway',sans-serif;text-align:center;margin-top:8px}
     div.stButton>button{background:rgba(88,117,121,0.2)!important;color:#587579!important;
       border:1.5px solid #587579!important;font-family:'Raleway',sans-serif!important;
       font-weight:700!important;border-radius:8px!important;padding:12px 32px!important;
-      font-size:.85rem!important;letter-spacing:.08em!important;transition:all .2s!important}
+      font-size:.85rem!important;letter-spacing:.08em!important}
     div.stButton>button:hover{background:#587579!important;color:white!important}
+    /* hide streamlit image captions and borders */
+    .stImage img{border:none!important}
+    [data-testid="stImage"]{border:none!important;background:none!important}
     </style>
     <div class="neb neb1"></div><div class="neb neb2"></div>
     <div class="neb neb3"></div><div class="neb neb4"></div>
     """, unsafe_allow_html=True)
 
-    st.markdown(f"""
-    <div class="home-wrap">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:32px">
-        <img src="data:image/png;base64,{tessera_header}" style="height:24px;opacity:0.75">
-        <span style="color:rgba(255,255,255,0.18);font-size:.9rem">|</span>
-        <img src="data:image/png;base64,{tessaix_b64}" style="height:26px">
-      </div>
-
-      <div style="color:rgba(255,255,255,0.4);font-size:.67rem;letter-spacing:.2em;
-                  text-transform:uppercase;font-family:'Raleway',sans-serif;margin-bottom:40px">
-        Propuestas comerciales inteligentes
-      </div>
-
-      <div class="card-grid">
-
-        <div class="card card-hc">
-          <div class="card-content">
-            {hc_img}
-            <div class="card-desc" style="color:rgba(240,232,222,0.65)">Recruitment · HR Advisory<br>Outsourcing · RPO</div>
-          </div>
-        </div>
-
-        <div class="card card-fi">
-          <div class="card-content">
-            {fi_img}
-            <div class="card-desc" style="color:rgba(240,232,222,0.3)">CFO · M&amp;A<br>Due Diligence</div>
-            <div class="card-badge">🏗️ En obras</div>
-          </div>
-        </div>
-
-        <div class="card card-cd">
-          <div class="card-content">
-            {cd_img}
-            <div class="card-title" style="color:rgba(240,232,222,0.45);font-size:.75rem;margin-bottom:6px">Cost Down</div>
-            <div class="card-desc" style="color:rgba(240,232,222,0.25)">Reducción de costes<br>operativos</div>
-            <div class="card-badge">🏗️ En obras</div>
-          </div>
-        </div>
-
-        <div class="card card-lt">
-          <div class="card-content">
-            {lt_img}
-            <div class="card-title" style="color:rgba(240,232,222,0.45);font-size:.75rem;margin-bottom:6px">LT Impulsa</div>
-            <div class="card-desc" style="color:rgba(240,232,222,0.25)">Asesoría fiscal<br>laboral y contable</div>
-            <div class="card-badge">🏗️ En obras</div>
-          </div>
-        </div>
-
-      </div>
-
-      <div class="bottom-txt">Better decisions, together.</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col1,col2,col3 = st.columns([1,2,1])
+    # ── Layout using Streamlit native components ──────────────────────────────
+    # Header
+    st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
+    col1,col2,col3 = st.columns([1,3,1])
     with col2:
-        if st.button("Entrar a Human Capital →", use_container_width=True):
+        h1,h2,h3 = st.columns([2,1,2])
+        with h1:
+            st.image(f"data:image/png;base64,{tessera_header}", width=140)
+        with h2:
+            st.markdown("<div style='color:rgba(255,255,255,0.18);font-size:1.5rem;text-align:center;padding-top:4px'>|</div>", unsafe_allow_html=True)
+        with h3:
+            st.image(f"data:image/png;base64,{tessaix_b64}", width=140)
+
+    st.markdown("""
+    <div style='text-align:center;color:rgba(255,255,255,0.38);font-size:.67rem;
+                letter-spacing:.22em;text-transform:uppercase;font-family:Raleway,sans-serif;
+                margin:16px 0 40px'>
+      Propuestas comerciales inteligentes
+    </div>""", unsafe_allow_html=True)
+
+    # Cards — 4 columns
+    c1, c2, c3, c4 = st.columns(4)
+
+    card_css = """
+    <style>
+    .card-box{background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.1);
+      border-radius:14px;padding:22px 16px;text-align:center;min-height:160px;
+      transition:border-color .3s,transform .3s;position:relative;overflow:hidden}
+    .card-box:hover{border-color:rgba(88,117,121,0.8);transform:translateY(-3px)}
+    .card-active{border-color:rgba(88,117,121,0.5)!important}
+    .card-sub{font-size:.65rem;color:rgba(240,232,222,0.55);line-height:1.7;
+              font-family:Raleway,sans-serif;margin-top:8px}
+    .card-sub-dim{font-size:.65rem;color:rgba(240,232,222,0.28);line-height:1.7;
+                  font-family:Raleway,sans-serif;margin-top:8px}
+    </style>
+    """
+    st.markdown(card_css, unsafe_allow_html=True)
+
+    with c1:
+        st.markdown(f"""
+        <div class="card-box card-active" style="cursor:pointer">
+          <img src="data:image/png;base64,{hc_logo}" style="width:100%;max-width:130px;margin-bottom:8px">
+          <div style="font-size:.6rem;letter-spacing:.12em;color:#587579;font-family:Raleway,sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:6px">HUMAN CAPITAL</div>
+          <div class="card-sub">Recruitment · HR Advisory<br>Outsourcing · RPO</div>
+        </div>""", unsafe_allow_html=True)
+        # Invisible button overlaid — full width click
+        if st.button("→ Human Capital", key="btn_hc", use_container_width=True):
             st.session_state.screen = "hc"; st.rerun()
+
+    with c2:
+        st.markdown(f"""
+        <div class="card-box">
+          <img src="data:image/png;base64,{fi_logo}" style="width:100%;max-width:130px;margin-bottom:8px;opacity:.4">
+          <div style="font-size:.6rem;letter-spacing:.12em;color:rgba(118,45,53,0.5);font-family:Raleway,sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:6px">FINANCE</div>
+          <div class="card-sub-dim">CFO · M&A<br>Due Diligence</div>
+          <div class="card-badge">🏗️ En obras</div>
+        </div>""", unsafe_allow_html=True)
+
+    with c3:
+        # Cost Down — use PNG directly via st.image won't work in card, use text fallback
+        cd_path = _find("costdown_logo.png")
+        cd_b64 = ""
+        try:
+            with open(str(cd_path),'rb') as f:
+                cd_b64 = base64.b64encode(f.read()).decode()
+        except: pass
+        cd_html = f'<img src="data:image/png;base64,{cd_b64}" style="max-width:110px;width:100%;margin-bottom:8px;opacity:.3;filter:brightness(0) invert(1)">' if cd_b64 else '<div style="font-size:1.4rem;margin-bottom:8px;opacity:.4">💰</div>'
+        st.markdown(f"""
+        <div class="card-box">
+          {cd_html}
+          <div style="font-size:.6rem;letter-spacing:.12em;color:rgba(240,232,222,0.35);font-family:Raleway,sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:6px">COST DOWN</div>
+          <div class="card-sub-dim">Reducción de costes<br>operativos</div>
+          <div class="card-badge">🏗️ En obras</div>
+        </div>""", unsafe_allow_html=True)
+
+    with c4:
+        lt_path = _find("logo_LT_.svg")
+        lt_b64 = ""
+        try:
+            with open(str(lt_path),'rb') as f:
+                lt_b64 = base64.b64encode(f.read()).decode()
+        except: pass
+        lt_html = f'<img src="data:image/svg+xml;base64,{lt_b64}" style="max-width:110px;width:100%;margin-bottom:8px;opacity:.3;filter:brightness(0) invert(1)">' if lt_b64 else '<div style="font-size:1.4rem;margin-bottom:8px;opacity:.4">📊</div>'
+        st.markdown(f"""
+        <div class="card-box">
+          {lt_html}
+          <div style="font-size:.6rem;letter-spacing:.12em;color:rgba(240,232,222,0.35);font-family:Raleway,sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:6px">LT IMPULSA</div>
+          <div class="card-sub-dim">Asesoría fiscal<br>laboral y contable</div>
+          <div class="card-badge">🏗️ En obras</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # Make the HC button invisible/minimal — card itself is the CTA
+    st.markdown("""
+    <style>
+    [data-testid="stButton"] button[kind="secondary"]{
+      background:transparent!important;border:none!important;
+      color:rgba(88,117,121,0.5)!important;font-size:.65rem!important;
+      padding:4px 0!important;margin-top:-8px!important;
+      letter-spacing:.1em!important;text-transform:uppercase!important}
+    </style>""", unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style='text-align:center;color:rgba(240,232,222,0.2);font-size:.65rem;
+                letter-spacing:.15em;font-family:Raleway,sans-serif;margin-top:24px'>
+      Better decisions, together.
+    </div>""", unsafe_allow_html=True)
+
 
 
 # ─── AI CONTENT ───────────────────────────────────────────────────────────────
