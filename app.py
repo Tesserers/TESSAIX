@@ -413,7 +413,7 @@ def build_pptx(data, content):
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
-    st.set_page_config(page_title="TESSAIX", page_icon="https://jobs.tesseraservices.com/favicon.ico",
+    st.set_page_config(page_title="TESSAIX", page_icon="https://tesseraservices.com/favicon.ico",
                        layout="centered", initial_sidebar_state="collapsed")
     check_auth()
     inject_css()
