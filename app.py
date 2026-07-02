@@ -213,7 +213,7 @@ def render_home():
     tessera_hdr = make_ailerons_png("TESSERA",  color=(255,255,255), size=42, width=380, height=62)
     tessaix_hdr = make_ailerons_png("TESSAIX",  color=(255,255,255), size=42, width=380, height=62)
     hc_logo     = make_ailerons_png("TESSERA",  color=(255,255,255), size=36, width=320, height=54)
-    fi_logo     = make_ailerons_png("TESSERA",  color=(118,45,53),   size=36, width=320, height=54)
+    fi_logo     = make_ailerons_png("TESSERA",  color=(240,232,222), size=36, width=320, height=54)
 
     # Logos externos
     cd_b64, lt_b64 = "", ""
@@ -257,15 +257,16 @@ def render_home():
     .card-badge{display:inline-block;margin-top:12px;font-size:.65rem;font-weight:700;
       letter-spacing:.1em;text-transform:uppercase;
       background:rgba(251,224,160,0.15);color:#FBE0A0;border-radius:4px;padding:3px 10px}
-    /* Hide button styling — make it invisible, just keeps click */
-    [data-testid="stButton"]>button{
-      position:absolute!important;top:0!important;left:0!important;
-      width:100%!important;height:100%!important;
-      background:transparent!important;border:none!important;
-      color:transparent!important;cursor:pointer!important;
-      z-index:10!important;border-radius:16px!important}
     .stImage img{border:none!important}
     [data-testid="stImage"]{background:transparent!important}
+    div.stButton>button{
+      background:rgba(88,117,121,0.15)!important;color:#587579!important;
+      border:1px solid rgba(88,117,121,0.4)!important;
+      font-family:Raleway,sans-serif!important;font-weight:700!important;
+      font-size:.7rem!important;letter-spacing:.12em!important;
+      border-radius:6px!important;padding:8px 0!important;
+      width:100%!important;margin-top:8px!important}
+    div.stButton>button:hover{background:#587579!important;color:white!important}
     </style>
     <div class="neb neb1"></div><div class="neb neb2"></div>
     <div class="neb neb3"></div><div class="neb neb4"></div>
@@ -296,22 +297,39 @@ def render_home():
 
     with c1:
         st.markdown(f"""
-        <div class="card card-active" style="position:relative">
+        <div class="card card-active">
           <img src="data:image/png;base64,{hc_logo}" style="height:44px;margin-bottom:10px">
           <div class="card-label" style="color:#587579">Human Capital</div>
-          <div class="card-desc" style="color:rgba(240,232,222,0.65)">
+          <div class="card-desc" style="color:rgba(240,232,222,0.82)">
             Recruitment · HR Advisory<br>Outsourcing · RPO
           </div>
         </div>""", unsafe_allow_html=True)
-        if st.button(" ", key="btn_hc"):
+        st.markdown("""
+        <style>
+        div[data-testid="stButton"]:has(button#btn_hc_label) button {
+          background: rgba(88,117,121,0.15) !important;
+          border: 1px solid rgba(88,117,121,0.4) !important;
+          color: #587579 !important;
+          font-size: .7rem !important;
+          letter-spacing: .12em !important;
+          font-family: Raleway, sans-serif !important;
+          font-weight: 700 !important;
+          border-radius: 6px !important;
+          padding: 8px 0 !important;
+          width: 100% !important;
+          margin-top: 8px !important;
+          cursor: pointer !important;
+        }
+        </style>""", unsafe_allow_html=True)
+        if st.button("Entrar →", key="btn_hc", use_container_width=True):
             st.session_state.screen = "hc"; st.rerun()
 
     with c2:
         st.markdown(f"""
         <div class="card card-inactive">
-          <img src="data:image/png;base64,{fi_logo}" style="height:44px;margin-bottom:10px;opacity:.45">
-          <div class="card-label" style="color:rgba(118,45,53,0.6)">Finance</div>
-          <div class="card-desc" style="color:rgba(240,232,222,0.3)">
+          <img src="data:image/png;base64,{fi_logo}" style="height:44px;margin-bottom:10px;opacity:.55">
+          <div class="card-label" style="color:rgba(240,232,222,0.55)">Finance</div>
+          <div class="card-desc" style="color:rgba(240,232,222,0.42)">
             CFO · M&amp;A<br>Due Diligence
           </div>
           <div class="card-badge">🏗️ En obras</div>
@@ -321,8 +339,8 @@ def render_home():
         st.markdown(f"""
         <div class="card card-inactive">
           {cd_img}
-          <div class="card-label" style="color:rgba(240,232,222,0.4)">Cost Down</div>
-          <div class="card-desc" style="color:rgba(240,232,222,0.28)">
+          <div class="card-label" style="color:rgba(240,232,222,0.65)">Cost Down</div>
+          <div class="card-desc" style="color:rgba(240,232,222,0.45)">
             Reducción de costes<br>operativos
           </div>
           <div class="card-badge">🏗️ En obras</div>
@@ -332,16 +350,17 @@ def render_home():
         st.markdown(f"""
         <div class="card card-inactive">
           {lt_img}
-          <div class="card-label" style="color:rgba(240,232,222,0.4)">LT Impulsa</div>
-          <div class="card-desc" style="color:rgba(240,232,222,0.28)">
+          <div class="card-label" style="color:rgba(240,232,222,0.65)">LT Impulsa</div>
+          <div class="card-desc" style="color:rgba(240,232,222,0.45)">
             Asesoría fiscal<br>laboral y contable
           </div>
           <div class="card-badge">🏗️ En obras</div>
         </div>""", unsafe_allow_html=True)
 
     st.markdown("""
-    <div style='text-align:center;color:rgba(240,232,222,0.2);font-size:.7rem;
-                letter-spacing:.15em;font-family:Raleway,sans-serif;margin-top:36px'>
+    <div style='text-align:center;color:#FBE0A0;font-size:.75rem;
+                letter-spacing:.15em;font-family:Raleway,sans-serif;margin-top:36px;
+                font-weight:500;opacity:0.8'>
       Better decisions, together.
     </div>""", unsafe_allow_html=True)
 
