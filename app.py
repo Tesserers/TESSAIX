@@ -5,10 +5,14 @@ from pathlib import Path
 import subprocess, tempfile
 from PIL import Image, ImageDraw, ImageFont
 
-ASSETS    = Path(__file__).parent / "assets"
-PLANTILLA = ASSETS / "plantilla_2.pptx"
-AILERONS  = ASSETS / "Ailerons-Typeface.otf"
-LOGO_B    = ASSETS / "logo_blanco.png"
+HERE      = Path(__file__).parent
+def _find(f):
+    for p in [HERE/f, HERE/"assets"/f]:
+        if p.exists(): return p
+    return HERE/f
+PLANTILLA = _find("plantilla_2.pptx")
+AILERONS  = _find("Ailerons-Typeface.otf")
+LOGO_B    = _find("logo_blanco.png")
 PASSWORD  = "Sales2026@"
 
 SERVICES_HC = {
@@ -413,7 +417,7 @@ def build_pptx(data, content):
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
-    st.set_page_config(page_title="TESSAIX", page_icon="https://tesseraservices.com/favicon.ico",
+    st.set_page_config(page_title="TESSAIX", page_icon=str(LOGO_B) if LOGO_B.exists() else "T",
                        layout="centered", initial_sidebar_state="collapsed")
     check_auth()
     inject_css()
