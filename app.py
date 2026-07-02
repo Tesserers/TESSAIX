@@ -153,14 +153,15 @@ def inject_css():
 # ─── HEADER ───────────────────────────────────────────────────────────────────
 def render_header(section="HUMAN CAPITAL"):
     logo_data = logo_b64()
-    logo_html = f'<img src="data:image/png;base64,{logo_data}" style="height:32px">' if logo_data else \
+    tessaix_hdr = make_ailerons_png("TESSAIX", color=(251,224,160), size=28, width=200, height=42)
+    logo_html = f'<img src="data:image/png;base64,{logo_data}" style="height:28px">' if logo_data else \
                 '<span style="color:white;font-weight:900;letter-spacing:.15em;font-size:.9rem">TESSERA</span>'
     st.markdown(f"""
     <div class="hdr">
-      <div style="display:flex;align-items:center;gap:16px">
+      <div style="display:flex;align-items:center;gap:14px">
         {logo_html}
-        <span style="color:#3a3d55;font-size:1.1rem">|</span>
-        <span style="color:#FBE0A0;font-weight:800;font-size:.85rem;letter-spacing:.2em">TESSAIX</span>
+        <span style="color:#3a3d55;font-size:1rem">|</span>
+        <img src="data:image/png;base64,{tessaix_hdr}" style="height:22px">
       </div>
       <span class="hb">{section}</span>
     </div>""", unsafe_allow_html=True)
@@ -352,11 +353,15 @@ def build_pptx(data, content):
         except: pass
 
         if client_logo:
-            (media/"image4.png").write_bytes(client_logo)
+            img4 = media / "image4.png"
+            if img4.exists():
+                img4.write_bytes(client_logo)
         else:
-            s1 = (slides/"slide1.xml").read_text("utf-8")
-            s1 = re.sub(r'<p:pic>\s*(?:(?!</p:pic>).)*?rId6(?:(?!</p:pic>).)*?</p:pic>','',s1,flags=re.DOTALL)
-            (slides/"slide1.xml").write_text(s1,"utf-8")
+            s1_path = slides / "slide1.xml"
+            if s1_path.exists():
+                s1 = s1_path.read_text("utf-8")
+                s1 = re.sub(r'<p:pic>\s*(?:(?!</p:pic>).)*?rId6(?:(?!</p:pic>).)*?</p:pic>','',s1,flags=re.DOTALL)
+                s1_path.write_text(s1,"utf-8")
 
         cover = content.get("cover",{})
         why   = content.get("why_tessera",{})
