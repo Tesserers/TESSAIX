@@ -13,6 +13,7 @@ def _find(f):
 PLANTILLA = _find("plantilla_2.pptx")
 AILERONS  = _find("Ailerons-Typeface.otf")
 LOGO_B    = _find("logo_blanco.png")
+FAVICON   = _find("logo1.png")
 PASSWORD  = "Sales2026@"
 
 SERVICES_HC = {
@@ -56,12 +57,35 @@ def check_auth():
         [data-testid="stHeader"]{{display:none}}
         [data-testid="stAppViewContainer"]{{
           background:#202031;
-          background-image:
-            radial-gradient(ellipse 70% 55% at 92% 8%,  rgba(88,117,121,0.38) 0%, transparent 65%),
-            radial-gradient(ellipse 50% 45% at 8%  92%, rgba(88,117,121,0.22) 0%, transparent 60%),
-            radial-gradient(ellipse 35% 30% at 75% 85%, rgba(251,224,160,0.10) 0%, transparent 55%),
-            radial-gradient(ellipse 25% 25% at 20% 15%, rgba(251,224,160,0.07) 0%, transparent 50%);
+          overflow:hidden;
         }}
+        [data-testid="stAppViewContainer"]::before {{
+          content:'';
+          position:fixed;
+          inset:0;
+          background:#202031;
+          z-index:0;
+        }}
+        [data-testid="stAppViewContainer"]::after {{
+          content:'';
+          position:fixed;
+          inset:0;
+          z-index:0;
+          background:
+            radial-gradient(ellipse 65% 50% at 90% 10%, rgba(88,117,121,0.55) 0%, transparent 60%),
+            radial-gradient(ellipse 55% 45% at 10% 90%, rgba(88,117,121,0.35) 0%, transparent 55%),
+            radial-gradient(ellipse 40% 35% at 80% 80%, rgba(251,224,160,0.20) 0%, transparent 50%),
+            radial-gradient(ellipse 30% 30% at 15% 20%, rgba(251,224,160,0.12) 0%, transparent 45%);
+          animation: nebula 12s ease-in-out infinite alternate;
+        }}
+        @keyframes nebula {{
+          0%   {{ background-position: 90% 10%, 10% 90%, 80% 80%, 15% 20%; opacity:1; }}
+          25%  {{ background-position: 85% 15%, 15% 85%, 75% 85%, 20% 15%; opacity:0.85; }}
+          50%  {{ background-position: 80% 20%, 20% 80%, 70% 75%, 25% 25%; opacity:1; }}
+          75%  {{ background-position: 88% 8%,  12% 88%, 78% 82%, 18% 18%; opacity:0.9; }}
+          100% {{ background-position: 92% 5%,  8%  92%, 82% 78%, 12% 22%; opacity:1; }}
+        }}
+        .stApp,.block-container{{position:relative;z-index:1}}
         .stApp{{background:transparent}}
         .block-container{{padding-top:0!important}}
         .login-wrap{{max-width:380px;margin:0 auto;padding-top:18vh;text-align:center}}
@@ -432,7 +456,7 @@ def build_pptx(data, content):
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
-    st.set_page_config(page_title="TESSAIX", page_icon=str(LOGO_B) if LOGO_B.exists() else "T",
+    st.set_page_config(page_title="TESSAIX", page_icon=str(FAVICON) if FAVICON.exists() else "T",
                        layout="centered", initial_sidebar_state="collapsed")
     check_auth()
     inject_css()
