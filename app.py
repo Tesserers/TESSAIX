@@ -49,7 +49,7 @@ def check_auth():
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
     if not st.session_state.authenticated:
-        tessaix_b64 = make_ailerons_png("TESSAIX", color=(255,255,255), size=80, width=600, height=110)
+        tessaix_b64 = make_ailerons_png("TESSAIX", color=(255,255,255), size=100, width=700, height=130)
         st.markdown(f"""
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;600;700;800&display=swap');
@@ -58,27 +58,27 @@ def check_auth():
         [data-testid="stAppViewContainer"]{{background:#202031!important}}
         .stApp{{background:#202031!important;min-height:100vh}}
         .block-container{{padding-top:0!important;position:relative;z-index:10}}
-        .login-wrap{{max-width:380px;margin:0 auto;padding-top:18vh;text-align:center;position:relative;z-index:10}}
-        .tagline{{color:#587579;font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;
-                  margin-top:14px;margin-bottom:52px;font-family:'Raleway',sans-serif;font-weight:600}}
-        /* Nebula orbs — posición fija, animadas independientemente, DETRÁS de todo */
+        .login-wrap{{max-width:420px;margin:0 auto;padding-top:16vh;text-align:center;position:relative;z-index:10}}
+        .tagline{{color:#ffffff;font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;
+                  margin-top:14px;margin-bottom:52px;font-family:'Raleway',sans-serif;font-weight:400;
+                  opacity:0.55}}
         .neb{{position:fixed;border-radius:50%;filter:blur(80px);pointer-events:none;z-index:1}}
         .neb1{{width:600px;height:500px;top:-80px;right:-100px;
-               background:rgba(88,117,121,0.45);
-               animation:orb1 14s ease-in-out infinite alternate}}
+               background:rgba(88,117,121,0.5);
+               animation:orb1 5s ease-in-out infinite alternate}}
         .neb2{{width:500px;height:400px;bottom:-60px;left:-80px;
-               background:rgba(88,117,121,0.30);
-               animation:orb2 18s ease-in-out infinite alternate}}
-        .neb3{{width:350px;height:300px;bottom:80px;right:60px;
-               background:rgba(251,224,160,0.18);
-               animation:orb3 22s ease-in-out infinite alternate}}
-        .neb4{{width:250px;height:220px;top:120px;left:80px;
-               background:rgba(251,224,160,0.12);
-               animation:orb4 16s ease-in-out infinite alternate}}
-        @keyframes orb1{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(-60px,40px) scale(1.15)}}}}
-        @keyframes orb2{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(50px,-50px) scale(1.2)}}}}
-        @keyframes orb3{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(-40px,30px) scale(0.9)}}}}
-        @keyframes orb4{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(30px,40px) scale(1.1)}}}}
+               background:rgba(88,117,121,0.35);
+               animation:orb2 6s ease-in-out infinite alternate}}
+        .neb3{{width:380px;height:320px;bottom:80px;right:60px;
+               background:rgba(251,224,160,0.22);
+               animation:orb3 7s ease-in-out infinite alternate}}
+        .neb4{{width:280px;height:240px;top:120px;left:80px;
+               background:rgba(251,224,160,0.14);
+               animation:orb4 4s ease-in-out infinite alternate}}
+        @keyframes orb1{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(-80px,60px) scale(1.2)}}}}
+        @keyframes orb2{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(70px,-70px) scale(1.25)}}}}
+        @keyframes orb3{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(-60px,50px) scale(0.85)}}}}
+        @keyframes orb4{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(50px,60px) scale(1.15)}}}}
         div.stButton>button{{
           background:transparent!important;color:#587579!important;
           border:1.5px solid #587579!important;font-family:'Raleway',sans-serif!important;
@@ -99,7 +99,7 @@ def check_auth():
         <div class="neb neb3"></div>
         <div class="neb neb4"></div>
         <div class="login-wrap">
-          <img src="data:image/png;base64,{tessaix_b64}" style="width:320px">
+          <img src="data:image/png;base64,{tessaix_b64}" style="width:380px">
           <div class="tagline">Propuestas comerciales inteligentes</div>
         </div>
         """, unsafe_allow_html=True)
