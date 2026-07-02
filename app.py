@@ -227,91 +227,62 @@ def render_home():
     # HC logo for header — white version via PIL (SVG is navy, need white for dark bg)
     tessera_header = make_ailerons_png("TESSERA", color=(255,255,255), size=26, width=240, height=40)
 
-    st.markdown(f"""
+    # Build logo HTML snippets BEFORE the f-string
+    hc_img = f'<img src="{hc_src}" style="height:38px;margin-bottom:12px;filter:brightness(0) invert(1);opacity:.9">' if hc_src else '<div style="font-size:26px;margin-bottom:12px">👥</div>'
+    fi_img = f'<img src="{fi_src}" style="height:38px;margin-bottom:12px;filter:brightness(0) invert(1);opacity:.4">' if fi_src else '<div style="font-size:26px;margin-bottom:12px;opacity:.4">🏦</div>'
+    cd_img = f'<img src="{cd_src}" style="height:28px;margin-bottom:12px;opacity:.35;filter:brightness(0) invert(1)">' if cd_src else '<div style="font-size:26px;margin-bottom:12px;opacity:.4">💰</div>'
+    lt_img = f'<img src="{lt_src}" style="height:24px;margin-bottom:12px;opacity:.35;filter:brightness(0) invert(1)">' if lt_src else '<div style="font-size:26px;margin-bottom:12px;opacity:.4">📊</div>'
+
+    # CSS block
+    st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;600;700;800;900&display=swap');
-    [data-testid="stAppViewContainer"]{{background:#202031!important}}
-    [data-testid="stHeader"]{{display:none}}
-    .stApp{{background:#202031!important}}
-    .block-container{{padding-top:0!important}}
-
-    /* nebula bg orbs behind everything */
-    .neb{{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}}
-    .neb1{{width:550px;height:450px;top:-60px;right:-80px;background:rgba(88,117,121,0.4);
-           animation:orb1 5s ease-in-out infinite alternate}}
-    .neb2{{width:450px;height:380px;bottom:-40px;left:-60px;background:rgba(88,117,121,0.28);
-           animation:orb2 6s ease-in-out infinite alternate}}
-    .neb3{{width:320px;height:280px;bottom:100px;right:80px;background:rgba(251,224,160,0.18);
-           animation:orb3 7s ease-in-out infinite alternate}}
-    .neb4{{width:240px;height:210px;top:140px;left:60px;background:rgba(251,224,160,0.12);
-           animation:orb4 4s ease-in-out infinite alternate}}
-    @keyframes orb1{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(-80px,60px) scale(1.2)}}}}
-    @keyframes orb2{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(70px,-70px) scale(1.25)}}}}
-    @keyframes orb3{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(-60px,50px) scale(0.85)}}}}
-    @keyframes orb4{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(50px,60px) scale(1.15)}}}}
-
-    .home-wrap{{position:relative;z-index:2;min-height:100vh;display:flex;flex-direction:column;
-                align-items:center;justify-content:center;padding:40px 20px}}
-
-    /* cards */
-    .card-grid{{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:36px 0 24px}}
-    .card{{
-      position:relative;overflow:hidden;
-      background:rgba(255,255,255,0.04);
-      border:1.5px solid rgba(255,255,255,0.1);
-      border-radius:14px;padding:28px 24px;width:200px;
-      text-align:center;cursor:default;
-      transition:border-color .3s, transform .3s;
-      backdrop-filter:blur(4px);
-    }}
-    .card::before{{
-      content:'';position:absolute;inset:0;border-radius:14px;opacity:0;
-      transition:opacity .4s;z-index:0;
-    }}
-    .card:hover{{border-color:rgba(88,117,121,0.8);transform:translateY(-3px)}}
-    .card:hover::before{{opacity:1}}
-
-    .card-hc::before{{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(88,117,121,0.35) 0%,transparent 70%)}}
-    .card-fi::before{{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(88,117,121,0.2) 0%,transparent 70%)}}
-    .card-cd::before{{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(251,224,160,0.2) 0%,transparent 70%)}}
-    .card-lt::before{{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(42,61,101,0.4) 0%,transparent 70%)}}
-
-    .card-content{{position:relative;z-index:1}}
-    .card-icon{{font-size:26px;margin-bottom:12px}}
-    .card-title{{font-size:.82rem;font-weight:700;letter-spacing:.06em;margin-bottom:6px;
-                 font-family:'Raleway',sans-serif}}
-    .card-desc{{font-size:.68rem;line-height:1.6;font-family:'Raleway',sans-serif}}
-    .card-badge{{display:inline-block;margin-top:10px;font-size:.6rem;font-weight:700;
-                 letter-spacing:.1em;text-transform:uppercase;
-                 background:rgba(251,224,160,0.15);color:#FBE0A0;
-                 border-radius:3px;padding:2px 8px}}
-
-    .card-hc .card-title{{color:#587579}}
-    .card-hc .card-desc{{color:rgba(240,232,222,0.65)}}
-    .card-fi .card-title{{color:rgba(240,232,222,0.5)}}
-    .card-fi .card-desc{{color:rgba(240,232,222,0.35)}}
-    .card-cd .card-title{{color:rgba(240,232,222,0.5)}}
-    .card-cd .card-desc{{color:rgba(240,232,222,0.3)}}
-    .card-lt .card-title{{color:rgba(240,232,222,0.5)}}
-    .card-lt .card-desc{{color:rgba(240,232,222,0.3)}}
-
-    .bottom-txt{{color:rgba(240,232,222,0.3);font-size:.65rem;letter-spacing:.15em;
-                 font-family:'Raleway',sans-serif;text-align:center;margin-top:8px}}
-
-    div.stButton>button{{
-      background:rgba(88,117,121,0.2)!important;color:#587579!important;
+    [data-testid="stAppViewContainer"]{background:#202031!important}
+    [data-testid="stHeader"]{display:none}
+    .stApp{background:#202031!important}
+    .block-container{padding-top:0!important}
+    .neb{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}
+    .neb1{width:550px;height:450px;top:-60px;right:-80px;background:rgba(88,117,121,0.4);animation:orb1 5s ease-in-out infinite alternate}
+    .neb2{width:450px;height:380px;bottom:-40px;left:-60px;background:rgba(88,117,121,0.28);animation:orb2 6s ease-in-out infinite alternate}
+    .neb3{width:320px;height:280px;bottom:100px;right:80px;background:rgba(251,224,160,0.18);animation:orb3 7s ease-in-out infinite alternate}
+    .neb4{width:240px;height:210px;top:140px;left:60px;background:rgba(251,224,160,0.12);animation:orb4 4s ease-in-out infinite alternate}
+    @keyframes orb1{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-80px,60px) scale(1.2)}}
+    @keyframes orb2{0%{transform:translate(0,0) scale(1)}100%{transform:translate(70px,-70px) scale(1.25)}}
+    @keyframes orb3{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-60px,50px) scale(0.85)}}
+    @keyframes orb4{0%{transform:translate(0,0) scale(1)}100%{transform:translate(50px,60px) scale(1.15)}}
+    .home-wrap{position:relative;z-index:2;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px}
+    .card-grid{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:36px 0 24px}
+    .card{position:relative;overflow:hidden;background:rgba(255,255,255,0.04);
+      border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:28px 24px;
+      width:200px;text-align:center;cursor:default;
+      transition:border-color .3s, transform .3s;backdrop-filter:blur(4px)}
+    .card::before{content:'';position:absolute;inset:0;border-radius:14px;opacity:0;transition:opacity .4s;z-index:0}
+    .card:hover{border-color:rgba(88,117,121,0.8);transform:translateY(-3px)}
+    .card:hover::before{opacity:1}
+    .card-hc::before{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(88,117,121,0.35) 0%,transparent 70%)}
+    .card-fi::before{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(88,117,121,0.2) 0%,transparent 70%)}
+    .card-cd::before{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(251,224,160,0.2) 0%,transparent 70%)}
+    .card-lt::before{background:radial-gradient(ellipse 80% 80% at 50% 50%,rgba(42,61,101,0.4) 0%,transparent 70%)}
+    .card-content{position:relative;z-index:1}
+    .card-desc{font-size:.68rem;line-height:1.6;font-family:'Raleway',sans-serif}
+    .card-title{font-size:.75rem;font-weight:700;letter-spacing:.06em;margin-bottom:6px;font-family:'Raleway',sans-serif}
+    .card-badge{display:inline-block;margin-top:10px;font-size:.6rem;font-weight:700;
+      letter-spacing:.1em;text-transform:uppercase;
+      background:rgba(251,224,160,0.15);color:#FBE0A0;border-radius:3px;padding:2px 8px}
+    .bottom-txt{color:rgba(240,232,222,0.3);font-size:.65rem;letter-spacing:.15em;
+      font-family:'Raleway',sans-serif;text-align:center;margin-top:8px}
+    div.stButton>button{background:rgba(88,117,121,0.2)!important;color:#587579!important;
       border:1.5px solid #587579!important;font-family:'Raleway',sans-serif!important;
-      font-weight:700!important;border-radius:8px!important;
-      padding:12px 32px!important;font-size:.85rem!important;
-      letter-spacing:.08em!important;transition:all .2s!important}}
-    div.stButton>button:hover{{background:#587579!important;color:white!important}}
+      font-weight:700!important;border-radius:8px!important;padding:12px 32px!important;
+      font-size:.85rem!important;letter-spacing:.08em!important;transition:all .2s!important}
+    div.stButton>button:hover{background:#587579!important;color:white!important}
     </style>
-
     <div class="neb neb1"></div><div class="neb neb2"></div>
     <div class="neb neb3"></div><div class="neb neb4"></div>
+    """, unsafe_allow_html=True)
 
+    st.markdown(f"""
     <div class="home-wrap">
-      <!-- Header: TESSERA + | + TESSAIX en Ailerons -->
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:32px">
         <img src="data:image/png;base64,{tessera_header}" style="height:24px;opacity:0.75">
         <span style="color:rgba(255,255,255,0.18);font-size:.9rem">|</span>
@@ -325,38 +296,34 @@ def render_home():
 
       <div class="card-grid">
 
-        <!-- HUMAN CAPITAL — activa, logo SVG oficial -->
         <div class="card card-hc">
           <div class="card-content">
-            {'<img src="' + hc_src + '" style="height:36px;margin-bottom:14px;filter:brightness(0) invert(1);opacity:.9">' if hc_src else '<div class="card-icon">👥</div>'}
-            <div class="card-desc" style="color:rgba(240,232,222,0.6)">Recruitment · HR Advisory<br>Outsourcing · RPO</div>
+            {hc_img}
+            <div class="card-desc" style="color:rgba(240,232,222,0.65)">Recruitment · HR Advisory<br>Outsourcing · RPO</div>
           </div>
         </div>
 
-        <!-- FINANCE — en obras, logo SVG oficial -->
         <div class="card card-fi">
           <div class="card-content">
-            {'<img src="' + fi_src + '" style="height:36px;margin-bottom:14px;filter:brightness(0) invert(1);opacity:.45">' if fi_src else '<div class="card-icon" style="opacity:.4">🏦</div>'}
+            {fi_img}
             <div class="card-desc" style="color:rgba(240,232,222,0.3)">CFO · M&amp;A<br>Due Diligence</div>
             <div class="card-badge">🏗️ En obras</div>
           </div>
         </div>
 
-        <!-- COST DOWN — en obras -->
         <div class="card card-cd">
           <div class="card-content">
-            {'<img src="' + cd_src + '" style="height:28px;margin-bottom:14px;opacity:.35;filter:brightness(0) invert(1)">' if cd_src else '<div class="card-icon" style="opacity:.4">💰</div>'}
-            <div class="card-title" style="color:rgba(240,232,222,0.45);font-size:.75rem">Cost Down</div>
+            {cd_img}
+            <div class="card-title" style="color:rgba(240,232,222,0.45);font-size:.75rem;margin-bottom:6px">Cost Down</div>
             <div class="card-desc" style="color:rgba(240,232,222,0.25)">Reducción de costes<br>operativos</div>
             <div class="card-badge">🏗️ En obras</div>
           </div>
         </div>
 
-        <!-- LT IMPULSA — en obras -->
         <div class="card card-lt">
           <div class="card-content">
-            {'<img src="' + lt_src + '" style="height:24px;margin-bottom:14px;opacity:.35;filter:brightness(0) invert(1)">' if lt_src else '<div class="card-icon" style="opacity:.4">📊</div>'}
-            <div class="card-title" style="color:rgba(240,232,222,0.45);font-size:.75rem">LT Impulsa</div>
+            {lt_img}
+            <div class="card-title" style="color:rgba(240,232,222,0.45);font-size:.75rem;margin-bottom:6px">LT Impulsa</div>
             <div class="card-desc" style="color:rgba(240,232,222,0.25)">Asesoría fiscal<br>laboral y contable</div>
             <div class="card-badge">🏗️ En obras</div>
           </div>
