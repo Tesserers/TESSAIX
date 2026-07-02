@@ -55,42 +55,49 @@ def check_auth():
         @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;600;700;800&display=swap');
         html,body,[class*="css"]{{font-family:'Raleway',sans-serif!important}}
         [data-testid="stHeader"]{{display:none}}
-        [data-testid="stAppViewContainer"]{{
-          background:#202031 !important;
-        }}
-        .stApp{{
-          background: #202031;
-          background-image:
-            radial-gradient(ellipse 65% 50% at 90% 10%, rgba(88,117,121,0.55) 0%, transparent 60%),
-            radial-gradient(ellipse 55% 45% at 10% 90%, rgba(88,117,121,0.35) 0%, transparent 55%),
-            radial-gradient(ellipse 40% 35% at 80% 80%, rgba(251,224,160,0.20) 0%, transparent 50%),
-            radial-gradient(ellipse 30% 30% at 15% 20%, rgba(251,224,160,0.12) 0%, transparent 45%);
-          animation: nebula 12s ease-in-out infinite alternate;
-          min-height: 100vh;
-        }}
-        @keyframes nebula {{
-          0%   {{ background-size: 100% 100%; filter: blur(0px); }}
-          50%  {{ background-size: 120% 120%; filter: blur(2px); }}
-          100% {{ background-size: 105% 108%; filter: blur(0px); }}
-        }}
-        .block-container{{padding-top:0!important;position:relative;z-index:2}}
-        .login-wrap{{max-width:380px;margin:0 auto;padding-top:18vh;text-align:center}}
+        [data-testid="stAppViewContainer"]{{background:#202031!important}}
+        .stApp{{background:#202031!important;min-height:100vh}}
+        .block-container{{padding-top:0!important;position:relative;z-index:10}}
+        .login-wrap{{max-width:380px;margin:0 auto;padding-top:18vh;text-align:center;position:relative;z-index:10}}
         .tagline{{color:#587579;font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;
                   margin-top:14px;margin-bottom:52px;font-family:'Raleway',sans-serif;font-weight:600}}
+        /* Nebula orbs — posición fija, animadas independientemente, DETRÁS de todo */
+        .neb{{position:fixed;border-radius:50%;filter:blur(80px);pointer-events:none;z-index:1}}
+        .neb1{{width:600px;height:500px;top:-80px;right:-100px;
+               background:rgba(88,117,121,0.45);
+               animation:orb1 14s ease-in-out infinite alternate}}
+        .neb2{{width:500px;height:400px;bottom:-60px;left:-80px;
+               background:rgba(88,117,121,0.30);
+               animation:orb2 18s ease-in-out infinite alternate}}
+        .neb3{{width:350px;height:300px;bottom:80px;right:60px;
+               background:rgba(251,224,160,0.18);
+               animation:orb3 22s ease-in-out infinite alternate}}
+        .neb4{{width:250px;height:220px;top:120px;left:80px;
+               background:rgba(251,224,160,0.12);
+               animation:orb4 16s ease-in-out infinite alternate}}
+        @keyframes orb1{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(-60px,40px) scale(1.15)}}}}
+        @keyframes orb2{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(50px,-50px) scale(1.2)}}}}
+        @keyframes orb3{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(-40px,30px) scale(0.9)}}}}
+        @keyframes orb4{{0%{{transform:translate(0,0) scale(1)}}100%{{transform:translate(30px,40px) scale(1.1)}}}}
         div.stButton>button{{
           background:transparent!important;color:#587579!important;
           border:1.5px solid #587579!important;font-family:'Raleway',sans-serif!important;
           font-weight:700!important;border-radius:6px!important;width:100%!important;
           padding:14px!important;font-size:.95rem!important;margin-top:10px;
-          letter-spacing:.08em!important}}
+          letter-spacing:.08em!important;position:relative;z-index:10}}
         div.stButton>button:hover{{background:#587579!important;color:white!important}}
         .stTextInput input{{
-          background:rgba(42,45,69,0.8)!important;border:1.5px solid #3a3d55!important;
+          background:rgba(42,45,69,0.85)!important;border:1.5px solid #3a3d55!important;
           color:white!important;border-radius:6px!important;
-          font-family:'Raleway',sans-serif!important;padding:14px!important}}
+          font-family:'Raleway',sans-serif!important;padding:14px!important;
+          position:relative;z-index:10}}
         .stTextInput input::placeholder{{color:#666!important}}
         label{{color:#666!important;font-size:0!important;line-height:0!important}}
         </style>
+        <div class="neb neb1"></div>
+        <div class="neb neb2"></div>
+        <div class="neb neb3"></div>
+        <div class="neb neb4"></div>
         <div class="login-wrap">
           <img src="data:image/png;base64,{tessaix_b64}" style="width:320px">
           <div class="tagline">Propuestas comerciales inteligentes</div>
