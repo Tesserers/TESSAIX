@@ -1,8 +1,8 @@
 import streamlit as st
 import anthropic
-import shutil, os, re, io, json, base64
+import shutil, os, re, io, json, base64, zipfile
 from pathlib import Path
-import subprocess, tempfile
+import tempfile
 from PIL import Image, ImageDraw, ImageFont
 
 HERE      = Path(__file__).parent
@@ -330,10 +330,14 @@ def build_pptx(data, content):
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         work = tmp / "work.pptx"
-        shutil.copy(PLANTILLA, work)
-        scripts = Path("/mnt/skills/public/pptx/scripts")
-        unpack  = tmp / "unpacked"
-        subprocess.run(["python3", str(scripts/"office/unpack.py"), str(work), str(unpack)], capture_output=True)
+        shutil.copy(str(PLANTILLA), str(work))
+
+        # Unpack PPTX (it's a ZIP)
+        unpack = tmp / "unpacked"
+        import zipfile
+        with zipfile.ZipFile(work, 'r') as z:
+            z.extractall(unpack)
+
         slides = unpack / "ppt" / "slides"
         media  = unpack / "ppt" / "media"
 
@@ -447,9 +451,13 @@ def build_pptx(data, content):
         s = replace_text(s,"Edward@tesseraservices.com",content.get("contact",{}).get("email","Manuel.garcia@tesseraservices.com"))
         (slides/"slide16.xml").write_text(s,"utf-8")
 
-        subprocess.run(["python3",str(scripts/"clean.py"),str(unpack)],capture_output=True)
-        out = tmp/"output.pptx"
-        subprocess.run(["python3",str(scripts/"office/pack.py"),str(unpack),str(out),"--original",str(work)],capture_output=True)
+        # Pack back into PPTX (ZIP)
+        out = tmp / "output.pptx"
+        with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for file_path in sorted(unpack.rglob('*')):
+                if file_path.is_file():
+                    arcname = file_path.relative_to(unpack)
+                    zout.write(file_path, arcname)
         return out.read_bytes()
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
