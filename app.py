@@ -48,38 +48,53 @@ def check_auth():
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
     if not st.session_state.authenticated:
-        tessaix_b64 = make_ailerons_png("TESSAIX", color=(255,255,255), size=58, width=480, height=82)
+        tessaix_b64 = make_ailerons_png("TESSAIX", color=(255,255,255), size=80, width=600, height=110)
         st.markdown(f"""
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;600;700;800&display=swap');
-        html,body,[class*="css"]{{font-family:'Raleway',sans-serif!important;background:#202031!important}}
-        [data-testid="stAppViewContainer"]{{background:#202031}}
+        html,body,[class*="css"]{{font-family:'Raleway',sans-serif!important}}
         [data-testid="stHeader"]{{display:none}}
-        .stApp{{background:#202031}}
-        .login{{max-width:360px;margin:90px auto 0;text-align:center}}
-        .sub{{color:#587579;font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;margin-top:8px;margin-bottom:44px;font-family:'Raleway',sans-serif}}
-        div.stButton>button{{background:transparent!important;color:#587579!important;
+        [data-testid="stAppViewContainer"]{{
+          background:#202031;
+          background-image:
+            radial-gradient(ellipse 70% 55% at 92% 8%,  rgba(88,117,121,0.38) 0%, transparent 65%),
+            radial-gradient(ellipse 50% 45% at 8%  92%, rgba(88,117,121,0.22) 0%, transparent 60%),
+            radial-gradient(ellipse 35% 30% at 75% 85%, rgba(251,224,160,0.10) 0%, transparent 55%),
+            radial-gradient(ellipse 25% 25% at 20% 15%, rgba(251,224,160,0.07) 0%, transparent 50%);
+        }}
+        .stApp{{background:transparent}}
+        .block-container{{padding-top:0!important}}
+        .login-wrap{{max-width:380px;margin:0 auto;padding-top:18vh;text-align:center}}
+        .tagline{{color:#587579;font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;
+                  margin-top:14px;margin-bottom:52px;font-family:'Raleway',sans-serif;font-weight:600}}
+        div.stButton>button{{
+          background:transparent!important;color:#587579!important;
           border:1.5px solid #587579!important;font-family:'Raleway',sans-serif!important;
           font-weight:700!important;border-radius:6px!important;width:100%!important;
-          padding:12px!important;font-size:1rem!important;margin-top:8px}}
+          padding:14px!important;font-size:.95rem!important;margin-top:10px;
+          letter-spacing:.08em!important}}
         div.stButton>button:hover{{background:#587579!important;color:white!important}}
-        .stTextInput input{{background:#2a2d45!important;border:1.5px solid #3a3d55!important;
-          color:white!important;border-radius:6px!important;font-family:'Raleway',sans-serif!important}}
-        .stTextInput input::placeholder{{color:#888!important}}
-        label{{color:#666!important;font-size:0!important}}
+        .stTextInput input{{
+          background:rgba(42,45,69,0.7)!important;border:1.5px solid #3a3d55!important;
+          color:white!important;border-radius:6px!important;
+          font-family:'Raleway',sans-serif!important;padding:14px!important}}
+        .stTextInput input::placeholder{{color:#666!important}}
+        label{{color:#666!important;font-size:0!important;line-height:0!important}}
         </style>
-        <div class="login">
-          <img src="data:image/png;base64,{tessaix_b64}" style="width:260px;margin-bottom:4px">
-          <div class="sub">Human Capital · Propuestas</div>
+        <div class="login-wrap">
+          <img src="data:image/png;base64,{tessaix_b64}" style="width:320px">
+          <div class="tagline">Propuestas comerciales inteligentes</div>
         </div>
         """, unsafe_allow_html=True)
-        pwd = st.text_input("pwd", type="password", placeholder="Contraseña de acceso",
-                            label_visibility="collapsed")
-        if st.button("Entrar →", use_container_width=True):
-            if pwd == PASSWORD:
-                st.session_state.authenticated = True; st.rerun()
-            else:
-                st.error("Contraseña incorrecta")
+        col1, col2, col3 = st.columns([1,2,1])
+        with col2:
+            pwd = st.text_input("pwd", type="password", placeholder="Contraseña de acceso",
+                                label_visibility="collapsed")
+            if st.button("Entrar →", use_container_width=True):
+                if pwd == PASSWORD:
+                    st.session_state.authenticated = True; st.rerun()
+                else:
+                    st.error("Contraseña incorrecta")
         st.stop()
 
 # ─── CSS INTERIOR ─────────────────────────────────────────────────────────────
