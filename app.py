@@ -209,156 +209,142 @@ def render_steps(current):
 
 # ─── HOME ─────────────────────────────────────────────────────────────────────
 def render_home():
-    tessaix_b64 = make_ailerons_png("TESSAIX", color=(255,255,255), size=58, width=520, height=84)
+    # Logos en Ailerons PIL — tamaño grande y legible
+    tessera_hdr = make_ailerons_png("TESSERA",  color=(255,255,255), size=42, width=380, height=62)
+    tessaix_hdr = make_ailerons_png("TESSAIX",  color=(255,255,255), size=42, width=380, height=62)
+    hc_logo     = make_ailerons_png("TESSERA",  color=(255,255,255), size=36, width=320, height=54)
+    fi_logo     = make_ailerons_png("TESSERA",  color=(118,45,53),   size=36, width=320, height=54)
 
-    # Generate ALL logos via Ailerons PIL — no SVG data URIs in HTML (too large for Streamlit)
-    tessera_header = make_ailerons_png("TESSERA", color=(255,255,255), size=24, width=220, height=38)
+    # Logos externos
+    cd_b64, lt_b64 = "", ""
+    try:
+        with open(str(_find("costdown_logo.png")),'rb') as f: cd_b64 = base64.b64encode(f.read()).decode()
+    except: pass
+    try:
+        with open(str(_find("logo_LT_.svg")),'rb') as f: lt_b64 = base64.b64encode(f.read()).decode()
+    except: pass
 
-    # Human Capital logo: "TESSERA" navy + "HUMAN CAPITAL" small
-    hc_logo   = make_ailerons_png("TESSERA", color=(255,255,255), size=28, width=260, height=44)
-    fi_logo   = make_ailerons_png("TESSERA", color=(118,45,53),   size=28, width=260, height=44)  # granate
+    cd_img = f'<img src="data:image/png;base64,{cd_b64}" style="height:44px;margin-bottom:12px;opacity:.4;filter:brightness(0) invert(1)">' if cd_b64 else '<div style="font-size:2rem;margin-bottom:12px;opacity:.4">💰</div>'
+    lt_img = f'<img src="data:image/svg+xml;base64,{lt_b64}" style="height:36px;margin-bottom:12px;opacity:.4;filter:brightness(0) invert(1)">' if lt_b64 else '<div style="font-size:2rem;margin-bottom:12px;opacity:.4">📊</div>'
 
-    # CSS
+    # CSS global
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;600;700;800;900&display=swap');
     [data-testid="stAppViewContainer"]{background:#202031!important}
     [data-testid="stHeader"]{display:none}
     .stApp{background:#202031!important;min-height:100vh}
-    .block-container{padding-top:0!important;position:relative;z-index:2}
-    .neb{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}
-    .neb1{width:550px;height:450px;top:-60px;right:-80px;background:rgba(88,117,121,0.4);animation:orb1 5s ease-in-out infinite alternate}
-    .neb2{width:450px;height:380px;bottom:-40px;left:-60px;background:rgba(88,117,121,0.28);animation:orb2 6s ease-in-out infinite alternate}
-    .neb3{width:320px;height:280px;bottom:100px;right:80px;background:rgba(251,224,160,0.18);animation:orb3 7s ease-in-out infinite alternate}
-    .neb4{width:240px;height:210px;top:140px;left:60px;background:rgba(251,224,160,0.12);animation:orb4 4s ease-in-out infinite alternate}
+    .block-container{padding-top:0!important;max-width:1100px!important}
+    .neb{position:fixed;border-radius:50%;filter:blur(100px);pointer-events:none;z-index:0}
+    .neb1{width:650px;height:550px;top:-80px;right:-100px;background:rgba(88,117,121,0.45);animation:orb1 5s ease-in-out infinite alternate}
+    .neb2{width:550px;height:450px;bottom:-60px;left:-80px;background:rgba(88,117,121,0.3);animation:orb2 6s ease-in-out infinite alternate}
+    .neb3{width:400px;height:350px;bottom:120px;right:100px;background:rgba(251,224,160,0.2);animation:orb3 7s ease-in-out infinite alternate}
+    .neb4{width:300px;height:260px;top:160px;left:80px;background:rgba(251,224,160,0.13);animation:orb4 4s ease-in-out infinite alternate}
     @keyframes orb1{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-80px,60px) scale(1.2)}}
     @keyframes orb2{0%{transform:translate(0,0) scale(1)}100%{transform:translate(70px,-70px) scale(1.25)}}
     @keyframes orb3{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-60px,50px) scale(0.85)}}
     @keyframes orb4{0%{transform:translate(0,0) scale(1)}100%{transform:translate(50px,60px) scale(1.15)}}
-    .card-badge{display:inline-block;margin-top:8px;font-size:.6rem;font-weight:700;
+    /* Cards */
+    .card{background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.1);
+      border-radius:16px;padding:36px 24px;text-align:center;min-height:240px;
+      transition:border-color .3s,transform .3s,background .3s;position:relative;overflow:hidden}
+    .card:hover{border-color:rgba(88,117,121,0.7);transform:translateY(-4px);background:rgba(88,117,121,0.08)}
+    .card-active{border-color:rgba(88,117,121,0.6)!important;cursor:pointer}
+    .card-inactive{opacity:.7;cursor:default}
+    .card-label{font-size:.75rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+                font-family:Raleway,sans-serif;margin:10px 0 8px}
+    .card-desc{font-size:.78rem;line-height:1.8;font-family:Raleway,sans-serif}
+    .card-badge{display:inline-block;margin-top:12px;font-size:.65rem;font-weight:700;
       letter-spacing:.1em;text-transform:uppercase;
-      background:rgba(251,224,160,0.15);color:#FBE0A0;border-radius:3px;padding:2px 8px}
-    div.stButton>button{background:rgba(88,117,121,0.2)!important;color:#587579!important;
-      border:1.5px solid #587579!important;font-family:'Raleway',sans-serif!important;
-      font-weight:700!important;border-radius:8px!important;padding:12px 32px!important;
-      font-size:.85rem!important;letter-spacing:.08em!important}
-    div.stButton>button:hover{background:#587579!important;color:white!important}
-    /* hide streamlit image captions and borders */
+      background:rgba(251,224,160,0.15);color:#FBE0A0;border-radius:4px;padding:3px 10px}
+    /* Hide button styling — make it invisible, just keeps click */
+    [data-testid="stButton"]>button{
+      position:absolute!important;top:0!important;left:0!important;
+      width:100%!important;height:100%!important;
+      background:transparent!important;border:none!important;
+      color:transparent!important;cursor:pointer!important;
+      z-index:10!important;border-radius:16px!important}
     .stImage img{border:none!important}
-    [data-testid="stImage"]{border:none!important;background:none!important}
+    [data-testid="stImage"]{background:transparent!important}
     </style>
     <div class="neb neb1"></div><div class="neb neb2"></div>
     <div class="neb neb3"></div><div class="neb neb4"></div>
     """, unsafe_allow_html=True)
 
-    # ── Layout using Streamlit native components ──────────────────────────────
-    # Header
-    st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
-    col1,col2,col3 = st.columns([1,3,1])
-    with col2:
-        h1,h2,h3 = st.columns([2,1,2])
-        with h1:
-            st.image(f"data:image/png;base64,{tessera_header}", width=140)
-        with h2:
-            st.markdown("<div style='color:rgba(255,255,255,0.18);font-size:1.5rem;text-align:center;padding-top:4px'>|</div>", unsafe_allow_html=True)
-        with h3:
-            st.image(f"data:image/png;base64,{tessaix_b64}", width=140)
+    # ── Header ────────────────────────────────────────────────────────────────
+    st.markdown("<div style='height:56px'></div>", unsafe_allow_html=True)
+
+    _, hcol, _ = st.columns([1, 4, 1])
+    with hcol:
+        ha, hb, hc = st.columns([3, 1, 3])
+        with ha:
+            st.image(f"data:image/png;base64,{tessera_hdr}", use_container_width=True)
+        with hb:
+            st.markdown("<div style='text-align:center;color:rgba(255,255,255,0.2);font-size:2rem;line-height:1.8'>|</div>", unsafe_allow_html=True)
+        with hc:
+            st.image(f"data:image/png;base64,{tessaix_hdr}", use_container_width=True)
 
     st.markdown("""
-    <div style='text-align:center;color:rgba(255,255,255,0.38);font-size:.67rem;
+    <div style='text-align:center;color:rgba(255,255,255,0.4);font-size:.78rem;
                 letter-spacing:.22em;text-transform:uppercase;font-family:Raleway,sans-serif;
-                margin:16px 0 40px'>
+                margin:20px 0 48px'>
       Propuestas comerciales inteligentes
     </div>""", unsafe_allow_html=True)
 
-    # Cards — 4 columns
+    # ── Cards ─────────────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
-
-    card_css = """
-    <style>
-    .card-box{background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.1);
-      border-radius:14px;padding:22px 16px;text-align:center;min-height:160px;
-      transition:border-color .3s,transform .3s;position:relative;overflow:hidden}
-    .card-box:hover{border-color:rgba(88,117,121,0.8);transform:translateY(-3px)}
-    .card-active{border-color:rgba(88,117,121,0.5)!important}
-    .card-sub{font-size:.65rem;color:rgba(240,232,222,0.55);line-height:1.7;
-              font-family:Raleway,sans-serif;margin-top:8px}
-    .card-sub-dim{font-size:.65rem;color:rgba(240,232,222,0.28);line-height:1.7;
-                  font-family:Raleway,sans-serif;margin-top:8px}
-    </style>
-    """
-    st.markdown(card_css, unsafe_allow_html=True)
 
     with c1:
         st.markdown(f"""
-        <div class="card-box card-active" style="cursor:pointer">
-          <img src="data:image/png;base64,{hc_logo}" style="width:100%;max-width:130px;margin-bottom:8px">
-          <div style="font-size:.6rem;letter-spacing:.12em;color:#587579;font-family:Raleway,sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:6px">HUMAN CAPITAL</div>
-          <div class="card-sub">Recruitment · HR Advisory<br>Outsourcing · RPO</div>
+        <div class="card card-active" style="position:relative">
+          <img src="data:image/png;base64,{hc_logo}" style="height:44px;margin-bottom:10px">
+          <div class="card-label" style="color:#587579">Human Capital</div>
+          <div class="card-desc" style="color:rgba(240,232,222,0.65)">
+            Recruitment · HR Advisory<br>Outsourcing · RPO
+          </div>
         </div>""", unsafe_allow_html=True)
-        # Invisible button overlaid — full width click
-        if st.button("→ Human Capital", key="btn_hc", use_container_width=True):
+        if st.button(" ", key="btn_hc"):
             st.session_state.screen = "hc"; st.rerun()
 
     with c2:
         st.markdown(f"""
-        <div class="card-box">
-          <img src="data:image/png;base64,{fi_logo}" style="width:100%;max-width:130px;margin-bottom:8px;opacity:.4">
-          <div style="font-size:.6rem;letter-spacing:.12em;color:rgba(118,45,53,0.5);font-family:Raleway,sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:6px">FINANCE</div>
-          <div class="card-sub-dim">CFO · M&A<br>Due Diligence</div>
+        <div class="card card-inactive">
+          <img src="data:image/png;base64,{fi_logo}" style="height:44px;margin-bottom:10px;opacity:.45">
+          <div class="card-label" style="color:rgba(118,45,53,0.6)">Finance</div>
+          <div class="card-desc" style="color:rgba(240,232,222,0.3)">
+            CFO · M&amp;A<br>Due Diligence
+          </div>
           <div class="card-badge">🏗️ En obras</div>
         </div>""", unsafe_allow_html=True)
 
     with c3:
-        # Cost Down — use PNG directly via st.image won't work in card, use text fallback
-        cd_path = _find("costdown_logo.png")
-        cd_b64 = ""
-        try:
-            with open(str(cd_path),'rb') as f:
-                cd_b64 = base64.b64encode(f.read()).decode()
-        except: pass
-        cd_html = f'<img src="data:image/png;base64,{cd_b64}" style="max-width:110px;width:100%;margin-bottom:8px;opacity:.3;filter:brightness(0) invert(1)">' if cd_b64 else '<div style="font-size:1.4rem;margin-bottom:8px;opacity:.4">💰</div>'
         st.markdown(f"""
-        <div class="card-box">
-          {cd_html}
-          <div style="font-size:.6rem;letter-spacing:.12em;color:rgba(240,232,222,0.35);font-family:Raleway,sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:6px">COST DOWN</div>
-          <div class="card-sub-dim">Reducción de costes<br>operativos</div>
+        <div class="card card-inactive">
+          {cd_img}
+          <div class="card-label" style="color:rgba(240,232,222,0.4)">Cost Down</div>
+          <div class="card-desc" style="color:rgba(240,232,222,0.28)">
+            Reducción de costes<br>operativos
+          </div>
           <div class="card-badge">🏗️ En obras</div>
         </div>""", unsafe_allow_html=True)
 
     with c4:
-        lt_path = _find("logo_LT_.svg")
-        lt_b64 = ""
-        try:
-            with open(str(lt_path),'rb') as f:
-                lt_b64 = base64.b64encode(f.read()).decode()
-        except: pass
-        lt_html = f'<img src="data:image/svg+xml;base64,{lt_b64}" style="max-width:110px;width:100%;margin-bottom:8px;opacity:.3;filter:brightness(0) invert(1)">' if lt_b64 else '<div style="font-size:1.4rem;margin-bottom:8px;opacity:.4">📊</div>'
         st.markdown(f"""
-        <div class="card-box">
-          {lt_html}
-          <div style="font-size:.6rem;letter-spacing:.12em;color:rgba(240,232,222,0.35);font-family:Raleway,sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:6px">LT IMPULSA</div>
-          <div class="card-sub-dim">Asesoría fiscal<br>laboral y contable</div>
+        <div class="card card-inactive">
+          {lt_img}
+          <div class="card-label" style="color:rgba(240,232,222,0.4)">LT Impulsa</div>
+          <div class="card-desc" style="color:rgba(240,232,222,0.28)">
+            Asesoría fiscal<br>laboral y contable
+          </div>
           <div class="card-badge">🏗️ En obras</div>
         </div>""", unsafe_allow_html=True)
 
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-
-    # Make the HC button invisible/minimal — card itself is the CTA
     st.markdown("""
-    <style>
-    [data-testid="stButton"] button[kind="secondary"]{
-      background:transparent!important;border:none!important;
-      color:rgba(88,117,121,0.5)!important;font-size:.65rem!important;
-      padding:4px 0!important;margin-top:-8px!important;
-      letter-spacing:.1em!important;text-transform:uppercase!important}
-    </style>""", unsafe_allow_html=True)
-
-    st.markdown("""
-    <div style='text-align:center;color:rgba(240,232,222,0.2);font-size:.65rem;
-                letter-spacing:.15em;font-family:Raleway,sans-serif;margin-top:24px'>
+    <div style='text-align:center;color:rgba(240,232,222,0.2);font-size:.7rem;
+                letter-spacing:.15em;font-family:Raleway,sans-serif;margin-top:36px'>
       Better decisions, together.
     </div>""", unsafe_allow_html=True)
+
 
 
 
