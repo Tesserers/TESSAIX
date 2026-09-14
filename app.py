@@ -53,10 +53,15 @@ def replace_text_in_xml(xml: str, old: str, new: str) -> str:
     new_esc = new.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
     old_esc = old.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
+    # Matches only the real <a:t ...> tag — a lookahead after "a:t" requires
+    # whitespace, "/" or ">" so it never matches other tags that happen to
+    # start with "a:t" (e.g. <a:tabLst/>, <a:theme>).
+    TAG_OPEN = r'<a:t(?=[\s/>])[^>]*>'
+
     def process_para(m):
         para = m.group(0)
         # Get all <a:t> contents in this paragraph
-        runs_text = re.findall(r'<a:t[^>]*>(.*?)</a:t>', para, re.DOTALL)
+        runs_text = re.findall(TAG_OPEN + r'(.*?)</a:t>', para, re.DOTALL)
         full_text = ''.join(runs_text)
 
         # Check both escaped and unescaped versions
@@ -69,27 +74,13 @@ def replace_text_in_xml(xml: str, old: str, new: str) -> str:
 
         # Put the new text in the first <a:t> tag, clear the rest
         count = [0]
-        def replace_first(m2):
+        def repl(m2):
             count[0] += 1
             if count[0] == 1:
-                return m2.group(1) + new_full + m2.group(2)
+                return f'{m2.group(1)}{new_full}{m2.group(3)}'
             else:
-                return m2.group(1) + '' + m2.group(2)
-
-        result = re.sub(r'(<a:t[^>]*>)(.*?)(</a:t>)',
-                        lambda m2: (m2.group(1) + (new_full if count[0] == 0 else '') + m2.group(3)) if (count.__setitem__(0, count[0]+1) or True) and count[0] == 1 else m2.group(1) + '' + m2.group(3),
-                        para, flags=re.DOTALL)
-
-        # Simpler approach: replace all a:t content
-        count2 = [0]
-        def repl(m2):
-            count2[0] += 1
-            if count2[0] == 1:
-                return f'{m2.group(1)}{new_full}{m2.group(2)}'
-            else:
-                return f'{m2.group(1)}{m2.group(2)}'
-        result = re.sub(r'(<a:t[^>]*>)([^<]*)(</a:t>)', repl, para)
-        return result
+                return f'{m2.group(1)}{m2.group(3)}'
+        return re.sub(f'({TAG_OPEN})([^<]*)(</a:t>)', repl, para)
 
     return re.sub(r'<a:p\b[^>]*>.*?</a:p>', process_para, xml, flags=re.DOTALL)
 
