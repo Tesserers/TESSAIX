@@ -160,7 +160,7 @@ def _text_field(container: dict, key: str, label: str, kind: str, widget_key: st
 
 def _render_content_editor(data: dict, content: dict):
     st.markdown("#### 📝 Contenido de la propuesta")
-    st.caption("Generado con IA a partir de los datos del cliente. Puedes editar cualquier texto antes de generar el PowerPoint.")
+    st.caption("Generado a partir de los datos del cliente. Puedes editar cualquier texto antes de generar el PowerPoint.")
 
     why = content.setdefault("why_tessera", {})
     with st.expander("Por qué elegir Tessera (diapositiva 3)", expanded=False):
