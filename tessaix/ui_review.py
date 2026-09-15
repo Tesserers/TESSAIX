@@ -184,7 +184,7 @@ def step_review():
 
     if st.session_state.content is None:
         st.markdown("Todavía no se ha generado contenido para esta propuesta.")
-        if st.button("✦ Generar contenido con IA", use_container_width=True):
+        if st.button("✦ Generar propuesta", use_container_width=True):
             c = generate_content(data)
             if c:
                 st.session_state.content = c
@@ -209,7 +209,7 @@ def step_review():
             st.session_state.step = STEP_CONTEXTO
             st.rerun()
     with cr:
-        if st.button("↺ Regenerar con IA"):
+        if st.button("↺ Regenerar propuesta"):
             c = generate_content(data)
             if c:
                 st.session_state.content = c
