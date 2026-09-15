@@ -10,8 +10,11 @@ from pathlib import Path
 from .config import PLANTILLA
 from .logo_client import compose_logo_for_placeholder
 from .xml_utils import (
+    clamp_picture_to_slide,
     enable_shrink_autofit,
     get_picture_frame_emu,
+    get_shape_ext_emu,
+    get_slide_size_emu,
     remove_content_type_override,
     remove_relationship,
     remove_shape_by_id,
@@ -20,6 +23,7 @@ from .xml_utils import (
     replace_text_in_xml,
     resolve_rel_target,
     resolve_rid_for_target,
+    shift_shape_y,
 )
 
 # Diapositivas cuyo contenido (título + cuerpo) viene de la IA y por tanto
@@ -31,6 +35,10 @@ _DYNAMIC_TEXT_SLIDES = ["slide3.xml", "slide5.xml", "slide6.xml", "slide7.xml"]
 # rId del <a:blip> que referencia el placeholder del logo del cliente en la
 # portada (slide1.xml), tal y como está definido en la plantilla actual.
 _CLIENT_LOGO_RID = "rId6"
+
+# Margen mínimo respecto al borde de la diapositiva al recolocar el hueco
+# del logo si se sale del lienzo (ver _apply_client_logo).
+_SLIDE_EDGE_MARGIN_EMU = 91440  # 0.1"
 
 # Bloque de "oferta cruzada" de Finance/M&A (Soporte financiero, Fiscalidad,
 # Auditoría, divisor "Tessera Group" y "Tessera Services") que viene
@@ -123,6 +131,19 @@ def _apply_client_logo(unpack: Path, logo_bytes: bytes | None) -> None:
     if media_file.exists():
         media_file.write_bytes(composed)
 
+    # La plantilla posiciona este hueco parcialmente FUERA de los límites
+    # de la diapositiva (se comprobó: se sale ~0.57" por la derecha y
+    # ~0.18" por abajo) — PowerPoint recorta silenciosamente lo que cae
+    # fuera del lienzo, así que el logo se veía cortado. Se recoloca sin
+    # tocar su tamaño para que quede completamente visible.
+    pres_path = unpack / "ppt" / "presentation.xml"
+    if pres_path.exists():
+        slide_size = get_slide_size_emu(_read(pres_path))
+        if slide_size:
+            slide_w, slide_h = slide_size
+            s1 = clamp_picture_to_slide(s1, _CLIENT_LOGO_RID, slide_w, slide_h, _SLIDE_EDGE_MARGIN_EMU)
+            _write(s1_path, s1)
+
 
 def _remove_slides(unpack: Path, slide_files: list[str]) -> None:
     """
@@ -187,6 +208,22 @@ def _apply_finance_crosssell(unpack: Path, include: bool) -> None:
         _write(slide15_path, s15)
 
 
+def _replace_title_and_push(s: str, old: str, new: str, title_id: int, body_id: int) -> str:
+    """
+    Sustituye un título que NUNCA se encoge (role="title"): si el texto
+    nuevo necesita más espacio del que tiene su caja original, esta crece
+    hacia abajo en vez de reducir la letra. Como el cuerpo está pegado justo
+    debajo, si el título creció se desplaza el cuerpo hacia abajo esa misma
+    distancia para que no se superpongan.
+    """
+    before = get_shape_ext_emu(s, title_id)
+    s = replace_text_and_fit(s, old, new, role="title")
+    after = get_shape_ext_emu(s, title_id)
+    if before and after and after[1] > before[1]:
+        s = shift_shape_y(s, body_id, after[1] - before[1])
+    return s
+
+
 def build_pptx(data: dict, content: dict, logo_bytes: bytes | None = None) -> bytes:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
@@ -217,13 +254,19 @@ def build_pptx(data: dict, content: dict, logo_bytes: bytes | None = None) -> by
         _write(slides / "slide1.xml", s)
 
         # ── SLIDE 3: por qué tessera ────────────────────────────────
+        # Título y cuerpo son cajas SEPARADAS, una justo debajo de la otra
+        # (id título → id cuerpo): el título nunca se encoge — si necesita
+        # más sitio, crece y empuja el cuerpo hacia abajo en vez de
+        # superponerse. El cuerpo puede encogerse un poco, pero nunca por
+        # debajo de 10pt (text_fit.MIN_FONT_SIZE_PT); si ni así cabe, crece
+        # su propia caja (no hay nada pegado justo debajo que lo impida).
         if why:
             s = _read(slides / "slide3.xml")
-            if why.get("d1_title"): s = r(s, "Sin CVs al azar", why["d1_title"])
+            if why.get("d1_title"): s = _replace_title_and_push(s, "Sin CVs al azar", why["d1_title"], 286, 287)
             if why.get("d1_body"):  s = r(s, "No enviamos el primer CV, buscamos a quien encaja de verdad. Candidatos filtrados sobre la mesa en 72 horas.", why["d1_body"])
-            if why.get("d2_title"): s = r(s, "Sin pausas", why["d2_title"])
+            if why.get("d2_title"): s = _replace_title_and_push(s, "Sin pausas", why["d2_title"], 289, 290)
             if why.get("d2_body"):  s = r(s, "Tu servicio no parará.", why["d2_body"])
-            if why.get("d3_title"): s = r(s, "Siempre contigo", why["d3_title"])
+            if why.get("d3_title"): s = _replace_title_and_push(s, "Siempre contigo", why["d3_title"], 292, 293)
             if why.get("d3_body"):  s = r(s, "No desaparecemos tras la incorporación: cuidamos a la persona y al cliente durante todo el servicio.", why["d3_body"])
             _write(slides / "slide3.xml", s)
 
@@ -254,7 +297,7 @@ def build_pptx(data: dict, content: dict, logo_bytes: bytes | None = None) -> by
         if "outsourcing" in data.get("services", []) and svcs.get("outsourcing"):
             outs = svcs["outsourcing"]
             s = _read(slides / "slide6.xml")
-            if outs.get("headline"): s = r(s, "Externalización que sí funciona: pagas por trabajo real, sin papeleo.", outs["headline"])
+            if outs.get("headline"): s = _replace_title_and_push(s, "Externalización que sí funciona: pagas por trabajo real, sin papeleo.", outs["headline"], 17, 3)
             if outs.get("body"):     s = r(s, "Contratar cuesta más de lo que parece. Con el modelo Time & Material ajustas el equipo a tu actividad real y nosotros nos encargamos de toda la gestión.", outs["body"])
             if outs.get("card1_body"): s = r(s, "Pagas solo por horas reales de trabajo.", outs["card1_body"])
             if outs.get("card2_body"): s = r(s, "Cubrimos bajas y vacaciones.", outs["card2_body"])
@@ -263,16 +306,18 @@ def build_pptx(data: dict, content: dict, logo_bytes: bytes | None = None) -> by
             _write(slides / "slide6.xml", s)
 
         # ── SLIDE 7: RPO ──────────────────────────────────────────────
+        # Mismo patrón que la slide 3: título/cuerpo en cajas separadas y
+        # pegadas — el título crece y empuja el cuerpo si hace falta.
         if "rpo" in data.get("services", []) and svcs.get("rpo"):
             rpo = svcs["rpo"]
             s = _read(slides / "slide7.xml")
-            if rpo.get("headline"): s = r(s, "RPO a tu medida", rpo["headline"])
+            if rpo.get("headline"): s = _replace_title_and_push(s, "RPO a tu medida", rpo["headline"], 48, 49)
             if rpo.get("body"):     s = r(s, "Te ofrecemos un equipo de recruiters que se integra en tu compañía como una extensión real de tu equipo, trabajando exclusivamente en tus necesidades durante el tiempo que lo necesites.\nNo solo ejecutamos procesos: entendemos tu negocio, tus retos y tu historia  para atraer el talento que realmente necesitas.", rpo["body"])
-            if rpo.get("p1_title"): s = r(s, "DEDICACIÓN TOTAL", rpo["p1_title"])
+            if rpo.get("p1_title"): s = _replace_title_and_push(s, "DEDICACIÓN TOTAL", rpo["p1_title"], 5, 9)
             if rpo.get("p1_body"):  s = r(s, "Un equipo dedicado en exclusiva a tu compañía, con conocimiento del sector publicitario y alineado c", rpo["p1_body"][:90])
-            if rpo.get("p2_title"): s = r(s, "EFICIENCIA REAL", rpo["p2_title"])
+            if rpo.get("p2_title"): s = _replace_title_and_push(s, "EFICIENCIA REAL", rpo["p2_title"], 12, 13)
             if rpo.get("p2_body"):  s = r(s, "Acceso directo a una red de +12.000 profesionales de publicidad ya identificados y validados. Menos ", rpo["p2_body"][:90])
-            if rpo.get("p3_title"): s = r(s, "FOCO EN CRECER", rpo["p3_title"])
+            if rpo.get("p3_title"): s = _replace_title_and_push(s, "FOCO EN CRECER", rpo["p3_title"], 15, 16)
             if rpo.get("p3_body"):  s = r(s, "Nosotros buscamos, filtramos y validamos. Tú te concentras en hacer crecer tu equipo y tu negocio.", rpo["p3_body"][:90])
             _write(slides / "slide7.xml", s)
 

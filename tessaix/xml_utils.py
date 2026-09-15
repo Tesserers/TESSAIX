@@ -109,6 +109,7 @@ def enable_shrink_autofit(slide_xml: str) -> str:
 # solo que sin el ajuste de tamaño (se limitaría a no encoger nada).
 _SHAPE_RE = re.compile(r'<p:sp>(?:(?!</p:sp>).)*?</p:sp>', re.DOTALL)
 _SHAPE_EXT_RE = re.compile(r'<p:spPr>.*?<a:ext\s+cx="(\d+)"\s+cy="(\d+)"\s*/>', re.DOTALL)
+_EXT_RE = re.compile(r'<a:ext\s+cx="(\d+)"\s+cy="(\d+)"\s*/>')
 _BODY_PR_OPEN_RE = re.compile(r'<a:bodyPr\b([^>]*)>')
 _PARAGRAPH_RE = re.compile(r'<a:p\b[^>]*>.*?</a:p>', re.DOTALL)
 _RUN_SZ_RE = re.compile(r'<a:rPr\b[^>]*?\bsz="(\d+)"')
@@ -122,23 +123,28 @@ def _inset_attr(attrs: str, name: str, default: int) -> int:
     return int(m.group(1)) if m else default
 
 
-def _shape_usable_area_pt(shape_xml: str) -> tuple[float, float] | None:
-    """Alto/ancho útil de una forma en puntos: su <a:ext> menos los
-    márgenes internos (<a:bodyPr lIns/tIns/rIns/bIns>), con los valores por
-    defecto de OOXML cuando no se especifican."""
-    ext = _SHAPE_EXT_RE.search(shape_xml)
-    if not ext:
-        return None
-    box_w_pt = text_fit.emu_to_pt(int(ext.group(1)))
-    box_h_pt = text_fit.emu_to_pt(int(ext.group(2)))
-
+def _shape_insets_emu(shape_xml: str) -> tuple[int, int, int, int]:
+    """Márgenes internos (l, t, r, b) en EMU de <a:bodyPr>, con los valores
+    por defecto de OOXML cuando no se especifican."""
     body_pr = _BODY_PR_OPEN_RE.search(shape_xml)
     attrs = body_pr.group(1) if body_pr else ""
     l_ins = _inset_attr(attrs, "lIns", text_fit.DEFAULT_INSET_LR_EMU)
     r_ins = _inset_attr(attrs, "rIns", text_fit.DEFAULT_INSET_LR_EMU)
     t_ins = _inset_attr(attrs, "tIns", text_fit.DEFAULT_INSET_TB_EMU)
     b_ins = _inset_attr(attrs, "bIns", text_fit.DEFAULT_INSET_TB_EMU)
+    return l_ins, t_ins, r_ins, b_ins
 
+
+def _shape_usable_area_pt(shape_xml: str) -> tuple[float, float] | None:
+    """Alto/ancho útil de una forma en puntos: su <a:ext> menos los
+    márgenes internos (<a:bodyPr lIns/tIns/rIns/bIns>)."""
+    ext = _SHAPE_EXT_RE.search(shape_xml)
+    if not ext:
+        return None
+    box_w_pt = text_fit.emu_to_pt(int(ext.group(1)))
+    box_h_pt = text_fit.emu_to_pt(int(ext.group(2)))
+
+    l_ins, t_ins, r_ins, b_ins = _shape_insets_emu(shape_xml)
     usable_w = max(1.0, box_w_pt - text_fit.emu_to_pt(l_ins + r_ins))
     usable_h = max(1.0, box_h_pt - text_fit.emu_to_pt(t_ins + b_ins))
     return usable_w, usable_h
@@ -165,15 +171,58 @@ def _paragraph_fit_info(para_xml: str) -> dict | None:
     }
 
 
-def replace_text_and_fit(slide_xml: str, old: str, new: str) -> str:
+def _grow_shape_height(shape_xml: str, min_cy_emu: int) -> str:
+    """Aumenta (nunca reduce) el <a:ext cy="..."> de esta forma para que
+    tenga al menos `min_cy_emu` de alto. Mantiene cx intacto."""
+    m = _EXT_RE.search(shape_xml)
+    if not m:
+        return shape_xml
+    cx, cy = m.group(1), int(m.group(2))
+    if cy >= min_cy_emu:
+        return shape_xml
+    return shape_xml.replace(m.group(0), f'<a:ext cx="{cx}" cy="{min_cy_emu}"/>', 1)
+
+
+# Suelo "normal" de un título: casi nunca se toca (mantiene el espíritu de
+# "los subtítulos siguen igual"), pero deja un pequeño margen antes de
+# recurrir a crecer la caja, que para columnas estrechas puede necesitar
+# bastante espacio incluso para un título de longitud normal.
+_TITLE_MIN_SCALE = 0.90
+
+
+def _apply_sz_scale(shape_xml: str, scale: float) -> str:
+    return _ANY_SZ_ATTR_RE.sub(
+        lambda sm: f'sz="{max(100, round(int(sm.group(1)) * scale))}"', shape_xml,
+    )
+
+
+def replace_text_and_fit(slide_xml: str, old: str, new: str, role: str = "body") -> str:
     """
     Igual que `replace_text_in_xml`, pero además comprueba si el texto
     resultante cabe en la caja real de la forma que lo contiene (todos sus
-    párrafos, no solo el que se acaba de sustituir) y, si no cabe, reduce el
-    tamaño de fuente de TODOS los runs de esa forma para que quepa sin
-    solaparse con nada — el cálculo queda horneado en el archivo, así que
-    funciona igual en PowerPoint, LibreOffice, Google Slides, etc.
+    párrafos, no solo el que se acaba de sustituir), en tres niveles:
+
+    1. Si cabe encogiendo un poco (sin bajar del suelo de su rol), se
+       reduce el tamaño de fuente de TODOS los runs de esa forma — el
+       cálculo queda horneado en el archivo, así que funciona igual en
+       PowerPoint, LibreOffice, Google Slides, etc.
+    2. Si ni así cabe, no se sigue encogiendo (quedaría ilegible): se hace
+       crecer la caja hasta el alto que haga falta, limitado a
+       `text_fit.MAX_GROW_MULTIPLIER` veces su alto original. Quien llama
+       es responsable de comprobar si la forma creció (con
+       `get_shape_ext_emu` antes/después) y desplazar lo que tenga debajo
+       — ver `shift_shape_y` y `pptx_builder._replace_title_and_push`.
+    3. Si ni haciendo crecer la caja hasta ese tope cabe (texto realmente
+       desmedido), se prioriza no salirse de la diapositiva por encima de
+       mantener el tamaño: se encoge más allá del suelo normal, hasta
+       `text_fit.ABSOLUTE_MIN_SCALE`, dentro de la caja ya crecida al tope.
+
+    `role="title"` usa un suelo de encogido muy leve (rara vez se nota) en
+    el paso 1; `role="body"` (por defecto) usa el suelo absoluto de
+    `text_fit.MIN_FONT_SIZE_PT`. El paso 3 (último recurso) es igual para
+    ambos roles.
     """
+    min_scale = _TITLE_MIN_SCALE if role == "title" else None
 
     def process_shape(m):
         shape_xml = m.group(0)
@@ -200,15 +249,76 @@ def replace_text_and_fit(slide_xml: str, old: str, new: str) -> str:
         if not paragraphs:
             return replaced
 
-        scale = text_fit.fit_scale(paragraphs, usable_w_pt, usable_h_pt)
-        if scale >= 0.999:
+        result = text_fit.fit_scale(paragraphs, usable_w_pt, usable_h_pt, min_scale=min_scale)
+        if result.scale >= 0.999 and result.fits:
             return replaced
 
-        return _ANY_SZ_ATTR_RE.sub(
-            lambda sm: f'sz="{max(100, round(int(sm.group(1)) * scale))}"', replaced,
+        if result.scale < 0.999:
+            replaced = _apply_sz_scale(replaced, result.scale)
+
+        if result.fits:
+            return replaced
+
+        # Ni encogiendo hasta el suelo del rol cabe: se hace crecer la
+        # caja. El alto de contenido no incluye los márgenes internos —hay
+        # que devolvérselos para obtener el alto TOTAL de la forma.
+        _, t_ins, _, b_ins = _shape_insets_emu(replaced)
+        insets_pt = text_fit.emu_to_pt(t_ins + b_ins)
+        original_box_h_pt = usable_h_pt + insets_pt
+        max_box_h_pt = original_box_h_pt * text_fit.MAX_GROW_MULTIPLIER
+        needed_box_h_pt = result.required_height_pt * text_fit.GROW_BUFFER + insets_pt
+
+        if needed_box_h_pt <= max_box_h_pt:
+            replaced = _grow_shape_height(replaced, text_fit.pt_to_emu(needed_box_h_pt))
+            return replaced
+
+        # El crecimiento necesario sería desmedido (texto muy por encima de
+        # los límites de longitud habituales): se prioriza no salirse de la
+        # diapositiva. Se crece hasta el tope y se encoge lo que haga falta
+        # — sin bajar de ABSOLUTE_MIN_SCALE — para que quepa ahí dentro.
+        capped_usable_h_pt = max_box_h_pt - insets_pt
+        fallback = text_fit.fit_scale(
+            paragraphs, usable_w_pt, capped_usable_h_pt, min_scale=text_fit.ABSOLUTE_MIN_SCALE,
         )
+        replaced = _apply_sz_scale(replaced, fallback.scale / result.scale)
+        replaced = _grow_shape_height(replaced, text_fit.pt_to_emu(max_box_h_pt))
+        return replaced
 
     return _SHAPE_RE.sub(process_shape, slide_xml)
+
+
+def get_shape_ext_emu(slide_xml: str, shape_id: int) -> tuple[int, int] | None:
+    """Tamaño (cx, cy) en EMU de la forma cuyo <p:cNvPr id="shape_id"> coincide."""
+    pattern = re.compile(
+        r'<p:sp>(?:(?!</p:sp>).)*?<p:cNvPr\b[^>]*\bid="%d"(?:(?!</p:sp>).)*?</p:sp>' % shape_id,
+        re.DOTALL,
+    )
+    m = pattern.search(slide_xml)
+    if not m:
+        return None
+    ext = _EXT_RE.search(m.group(0))
+    return (int(ext.group(1)), int(ext.group(2))) if ext else None
+
+
+def shift_shape_y(slide_xml: str, shape_id: int, delta_emu: int) -> str:
+    """Desplaza verticalmente (delta_emu puede ser negativo) la forma cuyo
+    <p:cNvPr id="shape_id"> coincide, sin tocar su tamaño."""
+    if delta_emu == 0:
+        return slide_xml
+    pattern = re.compile(
+        r'<p:sp>(?:(?!</p:sp>).)*?<p:cNvPr\b[^>]*\bid="%d"(?:(?!</p:sp>).)*?</p:sp>' % shape_id,
+        re.DOTALL,
+    )
+    m = pattern.search(slide_xml)
+    if not m:
+        return slide_xml
+    shape_xml = m.group(0)
+    off = re.search(r'<a:off\s+x="(-?\d+)"\s+y="(-?\d+)"\s*/>', shape_xml)
+    if not off:
+        return slide_xml
+    x, y = int(off.group(1)), int(off.group(2))
+    new_shape_xml = shape_xml.replace(off.group(0), f'<a:off x="{x}" y="{y + delta_emu}"/>', 1)
+    return slide_xml[:m.start()] + new_shape_xml + slide_xml[m.end():]
 
 
 # ─── LECTURA DE RELACIONES / MARCOS DE IMAGEN ─────────────────────────────
@@ -289,3 +399,44 @@ def get_picture_frame_emu(slide_xml: str, rid: str) -> tuple[int, int] | None:
         if ext:
             return int(ext.group(1)), int(ext.group(2))
     return None
+
+
+def get_slide_size_emu(presentation_xml: str) -> tuple[int, int] | None:
+    """Tamaño (cx, cy) en EMU de la diapositiva, desde <p:sldSz> en presentation.xml."""
+    m = re.search(r'<p:sldSz\s+cx="(\d+)"\s+cy="(\d+)"', presentation_xml)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def clamp_picture_to_slide(
+    slide_xml: str, rid: str, slide_w_emu: int, slide_h_emu: int, margin_emu: int = 0,
+) -> str:
+    """
+    Si el <p:pic> que referencia `rid` se sale de los límites de la
+    diapositiva (total o parcialmente — puede pasar si la plantilla la
+    posicionó pensando en otro tamaño de lienzo), lo desplaza hacia dentro
+    lo justo para que quede completamente visible, sin tocar su tamaño ni
+    su relación de aspecto.
+    """
+    pic_re = re.compile(r'<p:pic>(?:(?!</p:pic>).)*?</p:pic>', re.DOTALL)
+
+    def process(m):
+        block = m.group(0)
+        if f'r:embed="{rid}"' not in block:
+            return block
+        off = re.search(r'<a:off\s+x="(-?\d+)"\s+y="(-?\d+)"\s*/>', block)
+        ext = re.search(r'<a:ext\s+cx="(\d+)"\s+cy="(\d+)"\s*/>', block)
+        if not off or not ext:
+            return block
+        x, y = int(off.group(1)), int(off.group(2))
+        cx, cy = int(ext.group(1)), int(ext.group(2))
+
+        new_x = min(x, slide_w_emu - margin_emu - cx)
+        new_y = min(y, slide_h_emu - margin_emu - cy)
+        new_x = max(new_x, margin_emu)
+        new_y = max(new_y, margin_emu)
+
+        if new_x == x and new_y == y:
+            return block
+        return block.replace(off.group(0), f'<a:off x="{new_x}" y="{new_y}"/>', 1)
+
+    return pic_re.sub(process, slide_xml)

@@ -5,23 +5,29 @@ Contexto: la plantilla usa cajas de texto de tamaño FIJO para el contenido
 que genera la IA. El fix anterior (`xml_utils.enable_shrink_autofit`) marca
 esas cajas con `<a:normAutofit/>` para que PowerPoint reduzca la fuente si
 no cabe — pero esa señal solo funciona si el programa que abre el archivo
-la recalcula, y no todos lo hacen de forma fiable al abrir (algunas
-versiones de PowerPoint, Google Slides o LibreOffice la ignoran hasta que
-alguien edita el texto a mano). Por eso seguían viéndose solapes.
+la recalcula, y no todos lo hacen de forma fiable al abrir. Por eso seguían
+viéndose solapes.
 
 Este módulo hace el cálculo NOSOTROS, en Python, antes de escribir el
-archivo: estima cuántas líneas ocupará un texto dado su ancho de caja y
-tamaño de fuente (simulando el ajuste de línea por palabras), y si no cabe
-en el alto disponible, calcula un factor de reducción para que sí quepa.
-El tamaño resultante se escribe DIRECTAMENTE en el `sz` de cada run — así
-funciona igual en cualquier visor, sin depender de ningún recálculo.
+archivo. La estrategia tiene dos niveles:
+
+1. Un encogido MODESTO del tamaño de fuente (nunca por debajo de un suelo
+   legible) cuando con eso basta para que el texto quepa en su caja
+   original.
+2. Si ni encogiendo hasta el suelo cabe, no se sigue reduciendo el texto
+   (quedaría ilegible) — en su lugar, quien llama (`pptx_builder`) hace
+   crecer la caja y desplaza lo que tenga debajo. Este módulo expone
+   `fit_scale`, que dice cuál de los dos casos aplica (`fits=True/False`) y
+   cuánto alto hace falta de verdad.
 
 No es un motor de layout real (no conocemos las métricas exactas de
 Raleway sin incrustar la fuente), así que se usa una estimación de ancho
-de carácter deliberadamente conservadora: prefiere encoger un poco de más
-antes que arriesgarse a que el texto se salga de su caja.
+de carácter deliberadamente conservadora: prefiere pedir un poco más de
+alto antes que arriesgarse a que el texto se salga de su caja.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 EMU_PER_PT = 12700
 
@@ -37,20 +43,40 @@ AVG_CHAR_WIDTH_EM = 0.48
 # sola línea a espaciado "sencillo".
 LINE_HEIGHT_FACTOR = 1.2
 
-# No se reduce el texto por debajo de este porcentaje del tamaño original,
-# para que nunca quede ilegible — a partir de aquí se prefiere dejar que el
-# texto roce el borde de la caja antes que encoger más.
+# Suelo relativo de emergencia cuando no se puede determinar el tamaño de
+# fuente original de un párrafo (caso raro). El suelo normal es el
+# absoluto (MIN_FONT_SIZE_PT) — ver `fit_scale`.
 MIN_SCALE = 0.55
 
-# ...ni tampoco por debajo de este tamaño absoluto, gane quien gane de los
-# dos límites: un título nunca debería acabar más pequeño que un cuerpo de
-# texto legible, así que se respeta el que sea más permisivo con el tamaño.
-MIN_FONT_SIZE_PT = 8.0
+# Nunca se reduce un cuerpo de texto por debajo de este tamaño: a partir de
+# aquí se prefiere hacer crecer la caja (y desplazar lo que haya debajo)
+# antes que seguir encogiendo. Los subtítulos/títulos usan min_scale=1.0
+# (no se tocan nunca) desde `xml_utils`, así que este suelo aplica sobre
+# todo al texto de cuerpo.
+MIN_FONT_SIZE_PT = 10.0
 
 # Margen de seguridad: se exige que el contenido quepa en un
 # SAFETY_MARGIN del alto real de la caja, no en el 100%, para absorber la
 # imprecisión de la estimación.
 SAFETY_MARGIN = 0.94
+
+# Cuando hace falta crecer una caja, se le da un poco más del mínimo
+# estricto para no dejarla al filo del borde.
+GROW_BUFFER = 1.05
+
+# Una caja puede crecer como mucho esto respecto a su alto original. Sin
+# este tope, un texto verdaderamente desmedido podría inflar la caja hasta
+# salirse de la diapositiva — justo lo que se quiere evitar. Con los
+# límites de longitud de ai_content.py (60 caracteres por título, ~220 por
+# cuerpo) un crecimiento razonable se queda muy por debajo de este tope.
+MAX_GROW_MULTIPLIER = 2.5
+
+# Suelo de ÚLTIMO RECURSO: si ni haciendo crecer la caja hasta el tope
+# anterior cabe el texto, se prioriza no salirse de la página por encima de
+# mantener el tamaño — se permite encoger hasta aquí (relativo al tamaño
+# ORIGINAL, no al suelo normal de cada rol) antes que dejar la caja
+# desbordar la diapositiva.
+ABSOLUTE_MIN_SCALE = 0.5
 
 # Insets por defecto de un <a:bodyPr> en OOXML cuando no se especifican.
 DEFAULT_INSET_LR_EMU = 91440   # 0.1"
@@ -59,6 +85,10 @@ DEFAULT_INSET_TB_EMU = 45720   # 0.05"
 
 def emu_to_pt(emu: float) -> float:
     return emu / EMU_PER_PT
+
+
+def pt_to_emu(pt: float) -> int:
+    return round(pt * EMU_PER_PT)
 
 
 def estimate_wrapped_lines(text: str, box_width_pt: float, font_size_pt: float) -> int:
@@ -118,48 +148,65 @@ def paragraph_height_pt(
     return space_before_pt + content_height
 
 
+def total_height_pt(paragraphs: list[dict], box_width_pt: float, scale: float = 1.0) -> float:
+    return sum(
+        paragraph_height_pt(
+            p["text"], p["size_pt"] * scale, box_width_pt,
+            p.get("line_spacing_pct", 100.0), p.get("space_before_pt", 0.0),
+        )
+        for p in paragraphs
+    )
+
+
+@dataclass(frozen=True)
+class FitResult:
+    scale: float               # factor aplicado a cada tamaño de fuente original
+    required_height_pt: float  # alto que ocupa el contenido a ese scale
+    fits: bool                 # True si required_height_pt cabe en la caja actual
+
+
 def fit_scale(
     paragraphs: list[dict],
     box_width_pt: float,
     box_height_pt: float,
-    min_scale: float = MIN_SCALE,
-) -> float:
+    min_scale: float | None = None,
+) -> FitResult:
     """
     Dado un conjunto de párrafos (cada uno con "text", "size_pt",
-    "line_spacing_pct" y "space_before_pt") que comparten una misma caja,
-    devuelve el mayor factor de escala k <= 1.0 tal que, si todos los
-    tamaños de fuente se multiplican por k, el contenido cabe en
-    `box_height_pt` (con margen de seguridad). Nunca baja de `min_scale` NI
-    dejaría al párrafo más pequeño del grupo por debajo de
-    `MIN_FONT_SIZE_PT` — gana el límite que sea más permisivo con el tamaño.
+    "line_spacing_pct" y "space_before_pt") que comparten una misma caja:
+
+    - Si el contenido ya cabe a tamaño completo (o encogiendo hasta
+      `min_scale`), devuelve ese factor con `fits=True`.
+    - Si ni encogiendo hasta `min_scale` cabe, devuelve `min_scale` con
+      `fits=False` y el alto que de verdad hace falta — quien llama debe
+      entonces hacer crecer la caja en vez de seguir reduciendo el texto.
+
+    `min_scale=None` (por defecto) calcula el suelo a partir de
+    `MIN_FONT_SIZE_PT` y el tamaño de fuente más pequeño del grupo — así un
+    cuerpo de texto nunca baja de ese tamaño absoluto. Pásalo explícitamente
+    a `1.0` para contenido que no debe encogerse nunca (p.ej. subtítulos).
     """
-    if box_width_pt <= 0 or box_height_pt <= 0 or not paragraphs:
-        return 1.0
+    if not paragraphs or box_width_pt <= 0 or box_height_pt <= 0:
+        return FitResult(1.0, 0.0, True)
 
-    smallest_size = min((p["size_pt"] for p in paragraphs if p.get("size_pt")), default=None)
-    if smallest_size:
-        min_scale = max(min_scale, MIN_FONT_SIZE_PT / smallest_size)
-        min_scale = min(min_scale, 1.0)
-
-    def total_height(k: float) -> float:
-        return sum(
-            paragraph_height_pt(
-                p["text"], p["size_pt"] * k, box_width_pt,
-                p.get("line_spacing_pct", 100.0), p.get("space_before_pt", 0.0),
-            )
-            for p in paragraphs
-        )
+    if min_scale is None:
+        smallest_size = min((p["size_pt"] for p in paragraphs if p.get("size_pt")), default=None)
+        min_scale = (MIN_FONT_SIZE_PT / smallest_size) if smallest_size else MIN_SCALE
+    min_scale = max(0.0, min(min_scale, 1.0))
 
     target = box_height_pt * SAFETY_MARGIN
-    if total_height(1.0) <= target:
-        return 1.0
+
+    h_full = total_height_pt(paragraphs, box_width_pt, 1.0)
+    if h_full <= target:
+        return FitResult(1.0, h_full, True)
 
     # Búsqueda lineal simple (rango pequeño, no hace falta más finura).
-    k = 1.0
-    best = min_scale
+    k = 0.98
     while k >= min_scale:
-        if total_height(k) <= target:
-            best = k
-            break
+        h = total_height_pt(paragraphs, box_width_pt, k)
+        if h <= target:
+            return FitResult(round(k, 3), h, True)
         k -= 0.02
-    return round(best, 3)
+
+    h_floor = total_height_pt(paragraphs, box_width_pt, min_scale)
+    return FitResult(round(min_scale, 3), h_floor, False)
