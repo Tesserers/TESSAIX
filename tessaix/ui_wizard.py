@@ -1,7 +1,11 @@
-"""Pasos 0-4 del wizard: configuración, cliente, servicios, presentador, contexto."""
+"""Pasos del wizard: configuración, cliente, servicios, equipo/sedes, contexto."""
 import streamlit as st
 
-from .config import SERVICES_HC, STEP_CLIENTE, STEP_CONTEXTO, STEP_PRESENTADOR, STEP_REVIEW, STEP_SERVICIOS
+from .config import (
+    BUSINESS_LINE_HC, BUSINESS_LINE_HC_FINANCE, BUSINESS_LINES, SERVICES_HC,
+    STEP_CLIENTE, STEP_CONTEXTO, STEP_EQUIPO, STEP_REVIEW, STEP_SERVICIOS,
+)
+from .team import WARRANTY_MONTHS_OPTIONS
 
 
 def step_config():
@@ -9,6 +13,10 @@ def step_config():
     c1, c2 = st.columns(2)
     with c1:
         lang = st.radio("Idioma", ["Español", "English"])
+        business_line = st.radio(
+            "Línea de negocio", list(BUSINESS_LINES.values()),
+            help="Determina qué plantilla se usa: Human Capital sola, o Human Capital + Finance.",
+        )
     with c2:
         deck_type = st.radio("Tipo", ["Presentación (sin fees)", "Propuesta completa (con fees)"])
     st.markdown("---")
@@ -19,9 +27,11 @@ def step_config():
             st.rerun()
     with cn_:
         if st.button("Siguiente →"):
+            business_line_key = BUSINESS_LINE_HC_FINANCE if "Finance" in business_line else BUSINESS_LINE_HC
             st.session_state.form.update({
                 "lang": "es" if lang == "Español" else "en",
-                "deck_type": "presentacion" if "sin fees" in deck_type else "propuesta"
+                "deck_type": "presentacion" if "sin fees" in deck_type else "propuesta",
+                "business_line": business_line_key,
             })
             st.session_state.step = STEP_CLIENTE
             st.rerun()
@@ -54,7 +64,10 @@ def step_cliente():
                     "size": sz, "client_website": web,
                     "contact_name": ccn, "contact_role": ccr
                 })
-                st.session_state.step = STEP_SERVICIOS
+                # HC+Finance no tiene paso de servicios: los 4 van siempre
+                # juntos en la diapositiva resumen de la plantilla.
+                is_hc_finance = st.session_state.form.get("business_line") == BUSINESS_LINE_HC_FINANCE
+                st.session_state.step = STEP_EQUIPO if is_hc_finance else STEP_SERVICIOS
                 st.rerun()
 
 
@@ -63,22 +76,10 @@ def step_servicios():
     selected = st.multiselect("Servicios", list(SERVICES_HC.keys()),
                                default=["headhunting"], format_func=lambda x: SERVICES_HC[x])
 
-    st.markdown("---")
-    include_finance = st.checkbox(
-        "Incluir oferta cruzada de Finance/M&A para este cliente",
-        value=False,
-        help=(
-            "Añade el bloque de diapositivas de Soporte financiero, Fiscalidad, "
-            "Auditoría y Tessera Services. Actívalo solo si tiene sentido para "
-            "este cliente en concreto — si no, se genera la propuesta sin ese "
-            "bloque y con la numeración de páginas ajustada."
-        ),
-    )
-
     cb, cn_ = st.columns([1, 4])
     with cb:
         if st.button("← Atrás"):
-            st.session_state.step -= 1
+            st.session_state.step = STEP_CLIENTE
             st.rerun()
     with cn_:
         if st.button("Siguiente →"):
@@ -86,46 +87,70 @@ def step_servicios():
                 st.error("Selecciona al menos uno.")
             else:
                 st.session_state.form["services"] = selected
-                st.session_state.form["include_finance_crosssell"] = include_finance
-                st.session_state.step = STEP_PRESENTADOR
+                st.session_state.step = STEP_EQUIPO
                 st.rerun()
 
 
-def step_presentador():
-    st.markdown("### ¿Quién presenta esta propuesta?")
-    st.caption("Esta información aparecerá en la portada y en el slide de cierre.")
-    c1, c2 = st.columns(2)
-    with c1:
-        pname = st.text_input("Nombre completo *", value="Manuel García Pina",
-                               placeholder="Manuel García Pina")
-        pemail = st.text_input("Email *", value="Manuel.garcia@tesseraservices.com",
-                                placeholder="email@tesseraservices.com")
-    with c2:
-        pphone = st.text_input("Teléfono *", value="+34 619 511 155",
-                                placeholder="+34 6XX XXX XXX")
-        _ = st.text_input("Cargo", value="Partner",
-                           placeholder="Partner / Head of Recruitment…")
+def step_equipo():
+    data = st.session_state.form
+    is_hc_finance = data.get("business_line") == BUSINESS_LINE_HC_FINANCE
+
+    st.markdown("### Equipo y sedes")
+
+    include_eduardo = data.get("include_eduardo", False)
+    if is_hc_finance:
+        st.caption(
+            "El equipo de esta propuesta siempre incluye a Manuel Pina, "
+            "Mónica Mayoral y Edward Manrique."
+        )
+        include_eduardo = st.checkbox("Incluir también a Eduardo Serrano", value=include_eduardo)
+    else:
+        st.caption("El equipo de esta propuesta es fijo: Eduardo Serrano, Manuel Pina y Edward Manrique.")
+
+    st.markdown("---")
+    st.markdown("#### Sedes a mostrar")
+    locations_label = st.radio(
+        "Sedes", ["Las 3 sedes (Madrid · Bilbao · Oviedo)", "Solo Madrid"],
+        index=0 if data.get("locations", "all") == "all" else 1,
+        label_visibility="collapsed",
+    )
+    locations = "madrid" if "Solo Madrid" in locations_label else "all"
+
+    warranty_months = data.get("warranty_months", WARRANTY_MONTHS_OPTIONS[0])
+    if data.get("deck_type") == "propuesta":
+        st.markdown("---")
+        st.markdown("#### Garantía (términos y condiciones)")
+        warranty_months = st.radio(
+            "Meses de garantía", WARRANTY_MONTHS_OPTIONS,
+            index=WARRANTY_MONTHS_OPTIONS.index(warranty_months) if warranty_months in WARRANTY_MONTHS_OPTIONS else 0,
+            format_func=lambda m: f"{m} meses", horizontal=True,
+        )
+
     cb, cn_ = st.columns([1, 4])
     with cb:
         if st.button("← Atrás"):
-            st.session_state.step -= 1
+            st.session_state.step = STEP_SERVICIOS if not is_hc_finance else STEP_CLIENTE
             st.rerun()
     with cn_:
         if st.button("Siguiente →"):
-            if not pname.strip() or not pphone.strip():
-                st.error("Nombre y teléfono obligatorios.")
-            else:
-                st.session_state.form.update({
-                    "presenter_name": pname,
-                    "presenter_phone": pphone,
-                    "presenter_email": pemail
-                })
-                st.session_state.step = STEP_CONTEXTO
-                st.rerun()
+            st.session_state.form.update({
+                "include_eduardo": include_eduardo,
+                "locations": locations,
+                "warranty_months": warranty_months,
+            })
+            st.session_state.step = STEP_CONTEXTO
+            st.rerun()
 
 
 def step_contexto():
+    is_hc_finance = st.session_state.form.get("business_line") == BUSINESS_LINE_HC_FINANCE
+
     st.markdown("### Personalización")
+    if is_hc_finance:
+        st.caption(
+            "En las propuestas de Human Capital + Finance el contenido de las diapositivas de "
+            "servicio es fijo — esto solo se usa como referencia interna."
+        )
     pp = st.text_area("Pain points / retos del cliente", height=80,
                        placeholder="Ej: Crecimiento rápido, rotación alta en tienda, necesitan perfiles con vocación…")
     rn = st.text_area("Perfiles que necesitan cubrir", height=60,

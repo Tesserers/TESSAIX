@@ -1,25 +1,29 @@
 """Paso 6: generación final del .pptx y descarga."""
 import streamlit as st
 
-from .config import SERVICES_HC, STEP_REVIEW
+from .config import BUSINESS_LINE_HC_FINANCE, BUSINESS_LINES, SERVICES_HC, STEP_REVIEW
 from .pptx_builder import build_pptx
 
 
 def step_generate():
     d = st.session_state.form
+    is_hc_finance = d.get("business_line") == BUSINESS_LINE_HC_FINANCE
+
     st.markdown("### Genera tu PowerPoint")
     rows = [
         ("Cliente", d.get("client_name", "—")),
         ("Sector", d.get("sector", "—")),
         ("Idioma", "Español" if d.get("lang") == "es" else "English"),
+        ("Línea de negocio", BUSINESS_LINES.get(d.get("business_line"), "—")),
         ("Tipo", "Con fees" if d.get("deck_type") == "propuesta" else "Sin fees"),
-        ("Servicios", " · ".join([SERVICES_HC.get(s, s) for s in d.get("services", [])])),
-        ("Oferta cruzada Finance/M&A", "Sí" if d.get("include_finance_crosssell") else "No"),
-        ("Presentado por", d.get("presenter_name", "—")),
-        ("Teléfono", d.get("presenter_phone", "—")),
-        ("Logo cliente", {"auto": "Encontrado automáticamente", "manual": "Subido manualmente",
-                           "none": "Sin logo"}.get(st.session_state.get("logo_source"), "—")),
+        ("Sedes", "Las 3 sedes" if d.get("locations", "all") == "all" else "Solo Madrid"),
     ]
+    if is_hc_finance:
+        rows.append(("Equipo", "Con Eduardo Serrano" if d.get("include_eduardo") else "Sin Eduardo Serrano"))
+    else:
+        rows.append(("Servicios", " · ".join([SERVICES_HC.get(s, s) for s in d.get("services", [])])))
+    if d.get("deck_type") == "propuesta":
+        rows.append(("Garantía", f"{d.get('warranty_months', 3)} meses"))
     if d.get("fee_rate"):
         rows.append(("Fee", f"{d['fee_rate']}%"))
     html_r = "".join(f'<div class="sr"><span class="sk">{k}</span><span class="sv">{v}</span></div>'
@@ -36,9 +40,7 @@ def step_generate():
             if st.button("✦ Generar PowerPoint"):
                 with st.spinner("Montando el PowerPoint sobre la plantilla de Tessera…"):
                     try:
-                        st.session_state.pptx = build_pptx(
-                            d, st.session_state.content, logo_bytes=st.session_state.get("logo_bytes")
-                        )
+                        st.session_state.pptx = build_pptx(d, st.session_state.content)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error generando PPTX: {e}")
@@ -63,10 +65,6 @@ def step_generate():
                 st.rerun()
         with c2:
             if st.button("+ Nueva propuesta"):
-                for k, v in [
-                    ("step", 0), ("form", {}), ("content", None), ("pptx", None),
-                    ("logo_meta", None), ("logo_bytes", None), ("logo_source", None),
-                    ("logo_checked", False), ("logo_domain", ""),
-                ]:
+                for k, v in [("step", 0), ("form", {}), ("content", None), ("pptx", None)]:
                     st.session_state[k] = v
                 st.rerun()

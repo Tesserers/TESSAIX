@@ -9,20 +9,20 @@ import streamlit as st
 
 from tessaix.auth import check_auth
 from tessaix.config import (
-    FAVICON, STEP_CLIENTE, STEP_CONFIG, STEP_CONTEXTO, STEP_GENERATE,
-    STEP_PRESENTADOR, STEP_REVIEW, STEP_SERVICIOS,
+    BUSINESS_LINE_HC_FINANCE, FAVICON, STEP_CLIENTE, STEP_CONFIG, STEP_CONTEXTO,
+    STEP_EQUIPO, STEP_GENERATE, STEP_REVIEW, STEP_SERVICIOS,
 )
 from tessaix.styles import inject_css, render_header, render_steps
 from tessaix.ui_generate import step_generate
 from tessaix.ui_home import render_home
 from tessaix.ui_review import step_review
-from tessaix.ui_wizard import step_cliente, step_config, step_contexto, step_presentador, step_servicios
+from tessaix.ui_wizard import step_cliente, step_config, step_contexto, step_equipo, step_servicios
 
 STEP_RENDERERS = {
     STEP_CONFIG: step_config,
     STEP_CLIENTE: step_cliente,
     STEP_SERVICIOS: step_servicios,
-    STEP_PRESENTADOR: step_presentador,
+    STEP_EQUIPO: step_equipo,
     STEP_CONTEXTO: step_contexto,
     STEP_REVIEW: step_review,
     STEP_GENERATE: step_generate,
@@ -34,11 +34,6 @@ DEFAULT_SESSION_STATE = [
     ("form", {}),
     ("content", None),
     ("pptx", None),
-    ("logo_meta", None),
-    ("logo_bytes", None),
-    ("logo_source", None),
-    ("logo_checked", False),
-    ("logo_domain", ""),
 ]
 
 
@@ -74,7 +69,8 @@ def main():
             st.rerun()
         return
 
-    render_header("HUMAN CAPITAL")
+    business_line = st.session_state.form.get("business_line")
+    render_header("HUMAN CAPITAL + FINANCE" if business_line == BUSINESS_LINE_HC_FINANCE else "HUMAN CAPITAL")
     step = st.session_state.step
     render_steps(step)
 
