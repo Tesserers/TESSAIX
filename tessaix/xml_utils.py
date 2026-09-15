@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from . import text_fit
+
 # ─── REEMPLAZO DE TEXTO — CONSOLIDA RUNS ──────────────────────────────────
 # Sólo debe casar la etiqueta real <a:t ...>, nunca otras que empiecen
 # igual (p.ej. <a:tabLst/>, <a:theme>). El lookahead exige que justo
@@ -88,6 +90,125 @@ def enable_shrink_autofit(slide_xml: str) -> str:
     superponerlo con lo que hay debajo.
     """
     return _BODY_PR_RE.sub(lambda m: _shrink_body_pr(m.group(0)), slide_xml)
+
+
+# ─── REEMPLAZO CON AJUSTE DE TAMAÑO — evita solapes de verdad ─────────────
+# `enable_shrink_autofit` (arriba) marca las cajas para que PowerPoint las
+# encoja SOLO. El problema: esa señal (<a:normAutofit/>) únicamente surte
+# efecto si el programa que abre el archivo la recalcula, y no todos lo
+# hacen de forma fiable al abrir (por eso seguían viéndose solapes en la
+# práctica). Esta variante calcula el tamaño correcto EN PYTHON y lo deja
+# ya escrito en el `sz` de cada run — funciona en cualquier visor, sin
+# depender de que nadie recalcule nada. Ver tessaix.text_fit.
+#
+# Limitación conocida: asume que la forma con el texto no está dentro de un
+# <p:grpSp> (grupo), cuyo sistema de coordenadas hijo puede tener una
+# escala distinta a la de la diapositiva. Ninguno de los campos que hoy
+# rellena la IA vive dentro de un grupo, así que no aplica — si en el
+# futuro se añadiera uno, esta función seguiría reemplazando el texto bien,
+# solo que sin el ajuste de tamaño (se limitaría a no encoger nada).
+_SHAPE_RE = re.compile(r'<p:sp>(?:(?!</p:sp>).)*?</p:sp>', re.DOTALL)
+_SHAPE_EXT_RE = re.compile(r'<p:spPr>.*?<a:ext\s+cx="(\d+)"\s+cy="(\d+)"\s*/>', re.DOTALL)
+_BODY_PR_OPEN_RE = re.compile(r'<a:bodyPr\b([^>]*)>')
+_PARAGRAPH_RE = re.compile(r'<a:p\b[^>]*>.*?</a:p>', re.DOTALL)
+_RUN_SZ_RE = re.compile(r'<a:rPr\b[^>]*?\bsz="(\d+)"')
+_LNSPC_PCT_RE = re.compile(r'<a:lnSpc>\s*<a:spcPct\s+val="(\d+)"\s*/>\s*</a:lnSpc>')
+_SPCBEF_PTS_RE = re.compile(r'<a:spcBef>\s*<a:spcPts\s+val="(\d+)"\s*/>\s*</a:spcBef>')
+_ANY_SZ_ATTR_RE = re.compile(r'\bsz="(\d+)"')
+
+
+def _inset_attr(attrs: str, name: str, default: int) -> int:
+    m = re.search(rf'\b{name}="(\d+)"', attrs)
+    return int(m.group(1)) if m else default
+
+
+def _shape_usable_area_pt(shape_xml: str) -> tuple[float, float] | None:
+    """Alto/ancho útil de una forma en puntos: su <a:ext> menos los
+    márgenes internos (<a:bodyPr lIns/tIns/rIns/bIns>), con los valores por
+    defecto de OOXML cuando no se especifican."""
+    ext = _SHAPE_EXT_RE.search(shape_xml)
+    if not ext:
+        return None
+    box_w_pt = text_fit.emu_to_pt(int(ext.group(1)))
+    box_h_pt = text_fit.emu_to_pt(int(ext.group(2)))
+
+    body_pr = _BODY_PR_OPEN_RE.search(shape_xml)
+    attrs = body_pr.group(1) if body_pr else ""
+    l_ins = _inset_attr(attrs, "lIns", text_fit.DEFAULT_INSET_LR_EMU)
+    r_ins = _inset_attr(attrs, "rIns", text_fit.DEFAULT_INSET_LR_EMU)
+    t_ins = _inset_attr(attrs, "tIns", text_fit.DEFAULT_INSET_TB_EMU)
+    b_ins = _inset_attr(attrs, "bIns", text_fit.DEFAULT_INSET_TB_EMU)
+
+    usable_w = max(1.0, box_w_pt - text_fit.emu_to_pt(l_ins + r_ins))
+    usable_h = max(1.0, box_h_pt - text_fit.emu_to_pt(t_ins + b_ins))
+    return usable_w, usable_h
+
+
+def _paragraph_fit_info(para_xml: str) -> dict | None:
+    runs_text = re.findall(_A_T_OPEN + r'(.*?)</a:t>', para_xml, re.DOTALL)
+    text = ''.join(runs_text).replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+
+    sz_match = _RUN_SZ_RE.search(para_xml)
+    if not sz_match:
+        return None  # sin tamaño de fuente detectable: no arriesgamos el cálculo
+    size_pt = int(sz_match.group(1)) / 100.0
+
+    lnspc_match = _LNSPC_PCT_RE.search(para_xml)
+    line_spacing_pct = int(lnspc_match.group(1)) / 1000.0 if lnspc_match else 100.0
+
+    spc_match = _SPCBEF_PTS_RE.search(para_xml)
+    space_before_pt = int(spc_match.group(1)) / 100.0 if spc_match else 0.0
+
+    return {
+        "text": text, "size_pt": size_pt,
+        "line_spacing_pct": line_spacing_pct, "space_before_pt": space_before_pt,
+    }
+
+
+def replace_text_and_fit(slide_xml: str, old: str, new: str) -> str:
+    """
+    Igual que `replace_text_in_xml`, pero además comprueba si el texto
+    resultante cabe en la caja real de la forma que lo contiene (todos sus
+    párrafos, no solo el que se acaba de sustituir) y, si no cabe, reduce el
+    tamaño de fuente de TODOS los runs de esa forma para que quepa sin
+    solaparse con nada — el cálculo queda horneado en el archivo, así que
+    funciona igual en PowerPoint, LibreOffice, Google Slides, etc.
+    """
+
+    def process_shape(m):
+        shape_xml = m.group(0)
+        # OJO: no vale hacer aquí un atajo tipo "if old not in shape_xml:
+        # skip" como optimización — el texto viejo puede estar repartido en
+        # varios <a:r> (p.ej. por una palabra en negrita a mitad de frase),
+        # así que no aparece como substring contiguo aunque SÍ vaya a
+        # coincidir en `replace_text_in_xml` (que consolida por párrafo).
+        # Ya nos pasó una vez: se saltaba en silencio justo los textos que
+        # esta función existe para arreglar.
+        replaced = replace_text_in_xml(shape_xml, old, new)
+        if replaced == shape_xml:
+            return shape_xml  # este shape no contenía el texto a sustituir
+
+        usable_area = _shape_usable_area_pt(replaced)
+        if usable_area is None:
+            return replaced
+        usable_w_pt, usable_h_pt = usable_area
+
+        paragraphs = [
+            info for para in _PARAGRAPH_RE.findall(replaced)
+            if (info := _paragraph_fit_info(para)) is not None
+        ]
+        if not paragraphs:
+            return replaced
+
+        scale = text_fit.fit_scale(paragraphs, usable_w_pt, usable_h_pt)
+        if scale >= 0.999:
+            return replaced
+
+        return _ANY_SZ_ATTR_RE.sub(
+            lambda sm: f'sz="{max(100, round(int(sm.group(1)) * scale))}"', replaced,
+        )
+
+    return _SHAPE_RE.sub(process_shape, slide_xml)
 
 
 # ─── LECTURA DE RELACIONES / MARCOS DE IMAGEN ─────────────────────────────

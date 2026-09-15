@@ -16,6 +16,7 @@ from .xml_utils import (
     remove_relationship,
     remove_shape_by_id,
     remove_sld_id,
+    replace_text_and_fit,
     replace_text_in_xml,
     resolve_rel_target,
     resolve_rid_for_target,
@@ -197,7 +198,7 @@ def build_pptx(data: dict, content: dict, logo_bytes: bytes | None = None) -> by
             z.extractall(unpack)
 
         slides = unpack / "ppt" / "slides"
-        r = replace_text_in_xml
+        r = replace_text_and_fit
 
         _apply_client_logo(unpack, logo_bytes)
         _apply_finance_crosssell(unpack, data.get("include_finance_crosssell", False))
