@@ -12,6 +12,7 @@ import streamlit as st
 from .ai_content import generate_content
 from .config import SERVICES_HC, STEP_CONTEXTO, STEP_GENERATE
 from .logo_client import (
+    checkerboard_preview,
     compose_logo_for_placeholder,
     fetch_client_logo,
     logo_quality_label,
@@ -137,7 +138,10 @@ def _render_logo_section(data: dict):
             pcol, _ = st.columns([1, 2])
             with pcol:
                 with st.container(border=True):
-                    st.image(composed, use_container_width=True, caption="Así se verá en la portada (hueco real)")
+                    st.image(
+                        checkerboard_preview(composed), use_container_width=True,
+                        caption="Así se verá en la portada (el damero es solo para mostrar la transparencia; el fondo real es el de la diapositiva)",
+                    )
         except Exception as e:
             st.markdown(f'<div class="err">No se pudo procesar la imagen del logo: {e}</div>', unsafe_allow_html=True)
     elif not no_logo:

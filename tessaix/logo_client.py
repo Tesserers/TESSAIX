@@ -98,7 +98,7 @@ def compose_logo_for_placeholder(
     target_w_emu: int,
     target_h_emu: int,
     pad_frac: float = 0.06,
-    bg=(255, 255, 255, 255),
+    bg=(0, 0, 0, 0),
 ) -> bytes:
     """
     Encaja `logo_bytes` (cualquier PNG/JPG) en un lienzo cuya relación de
@@ -107,6 +107,13 @@ def compose_logo_for_placeholder(
     estirando la imagen (fillRect), y el lienzo ya tiene la proporción
     correcta, el estiramiento resultante es uniforme y el logo conserva su
     forma original.
+
+    El lienzo es TRANSPARENTE por defecto (no blanco): el logo se pega tal
+    cual es, sin añadirle una caja de color alrededor — se adapta a su
+    propia silueta y deja ver el fondo de la diapositiva a su alrededor. Si
+    el PNG/JPG de origen ya trae su propio fondo opaco (blanco u otro), ese
+    fondo es parte de la imagen y no se puede quitar aquí sin recortar el
+    logo.
 
     Devuelve bytes PNG listos para sustituir el media del placeholder.
     """
@@ -142,7 +149,23 @@ def compose_logo_for_placeholder(
     return buf.getvalue()
 
 
-def preview_png_b64(png_bytes: bytes) -> str:
-    import base64
-
-    return base64.b64encode(png_bytes).decode()
+def checkerboard_preview(composed_png_bytes: bytes, tile: int = 16) -> bytes:
+    """
+    Igual que `composed_png_bytes` pero con un patrón de damero pegado
+    DEBAJO, solo para que la vista previa en la app deje claro que el fondo
+    es transparente (y no una caja blanca) — el archivo que se inserta en
+    el .pptx sigue siendo el PNG transparente original, esto es solo para
+    que se vea en pantalla.
+    """
+    logo = Image.open(io.BytesIO(composed_png_bytes)).convert("RGBA")
+    w, h = logo.size
+    checker = Image.new("RGBA", (w, h), (255, 255, 255, 255))
+    light, dark = (240, 240, 240, 255), (214, 214, 214, 255)
+    for y in range(0, h, tile):
+        for x in range(0, w, tile):
+            color = dark if ((x // tile) + (y // tile)) % 2 else light
+            checker.paste(color, (x, y, min(x + tile, w), min(y + tile, h)))
+    checker.alpha_composite(logo)
+    buf = io.BytesIO()
+    checker.save(buf, "PNG")
+    return buf.getvalue()
