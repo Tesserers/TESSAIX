@@ -37,6 +37,34 @@ def _truncate_wordwise(text: str, limit: int) -> str:
     return cut + "…"
 
 
+def _restore_client_name(text: str, client_name: str) -> str:
+    """
+    El nombre de la empresa cliente NUNCA debe cambiar. A veces el modelo
+    trunca o "muerde" el final de un nombre propio dentro de una frase más
+    larga (p.ej. "Alimerka" -> "Alimerk") — esto corrige cualquier variante
+    del nombre a la que le falten hasta 3 caracteres al final, devolviéndolo
+    exactamente como lo escribió el usuario.
+    """
+    if not text or not client_name or len(client_name) < 3:
+        return text
+    for cut in (1, 2, 3):
+        if cut >= len(client_name):
+            break
+        variant = client_name[:-cut]
+        if len(variant) < 2 or variant == client_name:
+            continue
+        text = re.sub(r'\b' + re.escape(variant) + r'\b', client_name, text)
+    return text
+
+
+def _restore_client_name_everywhere(node, client_name: str):
+    if isinstance(node, dict):
+        return {k: _restore_client_name_everywhere(v, client_name) for k, v in node.items()}
+    if isinstance(node, str):
+        return _restore_client_name(node, client_name)
+    return node
+
+
 def enforce_length_limits(content: dict) -> dict:
     """Recorta (por palabra completa) cualquier campo de texto anormalmente
     largo, para que el autofit del .pptx nunca tenga que encoger la fuente
@@ -54,9 +82,29 @@ def enforce_length_limits(content: dict) -> dict:
     return _walk(content)
 
 
+# Regla común a todos los prompts: el nombre del cliente es intocable. Se
+# repite tal cual (con el nombre real interpolado) en cada system prompt
+# para que quede lo más arriba y explícito posible.
+def _name_rule_es(cn: str) -> str:
+    return (
+        f'- El nombre de la empresa cliente es EXACTAMENTE "{cn}". Escríbelo siempre así, '
+        f'letra por letra, en cualquier sitio donde aparezca — nunca lo abrevies, acortes, '
+        f'completes ni le cambies una sola letra.'
+    )
+
+
+def _name_rule_en(cn: str) -> str:
+    return (
+        f'- The client company name is EXACTLY "{cn}". Always write it exactly like that, '
+        f'letter for letter, wherever it appears — never abbreviate, shorten, complete, or '
+        f'change a single letter of it.'
+    )
+
+
 SYSTEM_ES = """Eres consultor comercial senior de Tessera Human Capital (tesseraservices.com).
 Generas contenido para propuestas comerciales en PowerPoint. Devuelves ÚNICAMENTE JSON válido.
 REGLAS ABSOLUTAS:
+{name_rule}
 - Sin guiones largos
 - Nunca uses "contexto" ni "criterio"
 - Español de España natural, directo, tono de negocio cercano, tono neutral de España
@@ -70,7 +118,9 @@ REGLAS ABSOLUTAS:
   Títulos: máximo 4-6 palabras. Cuerpos de texto: máximo 2-3 líneas (unos 150-200 caracteres)."""
 
 SYSTEM_EN = """Senior commercial consultant at Tessera Human Capital. Return ONLY valid JSON.
-ABSOLUTE RULES: no em dashes, sector-specific content only, complete standalone texts.
+ABSOLUTE RULES:
+{name_rule}
+- No em dashes, sector-specific content only, complete standalone texts.
 Neutral, professional business tone. Check there are no spelling or grammar mistakes
 before answering. Use plain, everyday words — never obscure or overly formal vocabulary
 (for example, never say "utilize"; say "use" instead).
@@ -84,7 +134,9 @@ def generate_content(data: dict) -> dict | None:
     svcs = ", ".join([SERVICES_HC.get(s, s) for s in data["services"]])
     cn, sec = data["client_name"], data["sector"]
 
-    system = SYSTEM_ES if not is_en else SYSTEM_EN
+    system = (SYSTEM_EN if is_en else SYSTEM_ES).format(
+        name_rule=_name_rule_en(cn) if is_en else _name_rule_es(cn)
+    )
 
     prompt = f"""Genera JSON para propuesta comercial de Tessera Human Capital para:
 CLIENTE: {cn}
@@ -98,7 +150,8 @@ INFO ADICIONAL: {data.get('extra_info', '')}
 
 IMPORTANTE: Todos los textos deben ser específicos para el sector "{sec}".
 NO mencionar publicidad, AdTech, programmatic ni nada relacionado con marketing digital
-a no ser que el cliente sea de ese sector.
+a no ser que el cliente sea de ese sector. El nombre de cliente "{cn}" debe escribirse
+siempre exactamente igual, sin cambiar ni una letra.
 
 Devuelve este JSON con contenido REAL y COMPLETO (no placeholders):
 {{
@@ -136,4 +189,59 @@ Devuelve este JSON con contenido REAL y COMPLETO (no placeholders):
         st.code(raw[:800])
         return None
 
-    return enforce_length_limits(content)
+    content = enforce_length_limits(content)
+    return _restore_client_name_everywhere(content, cn)
+
+
+def generate_context_paragraph(data: dict) -> str | None:
+    """
+    Párrafo de la diapositiva de "Contexto": una introducción breve a la
+    situación del cliente, en el estilo de una propuesta real (inspirado en
+    el formato de propuestas con una diapositiva de contexto dedicada).
+    Se usa igual en Human Capital y en Human Capital + Finance — es el
+    único contenido generado por IA que llevan las dos líneas de negocio.
+    """
+    client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+    is_en = data.get("lang") == "en"
+    cn, sec = data["client_name"], data.get("sector", "")
+
+    if is_en:
+        system = (
+            "You write the context paragraph of a commercial proposal for Tessera. "
+            "Return ONLY the paragraph's plain text — no quotes, no JSON, no markdown, "
+            "no title.\n" + _name_rule_en(cn) + "\n"
+            "Neutral, professional tone, no spelling mistakes, plain everyday words.\n"
+            "3-5 sentences, one single paragraph, no bullet points."
+        )
+        prompt = (
+            f"Client: {cn}\nSector: {sec}\nCountry: {data.get('country', 'Spain')}\n"
+            f"Challenges: {data.get('pain_points', '')}\n"
+            f"Additional info: {data.get('extra_info', '')}\n\n"
+            f"Write the context paragraph: briefly introduce {cn}, its sector and "
+            f"situation, and why it makes sense to talk about this proposal now."
+        )
+    else:
+        system = (
+            "Escribes el párrafo de contexto de una propuesta comercial de Tessera. "
+            "Devuelve ÚNICAMENTE el texto del párrafo — sin comillas, sin JSON, sin "
+            "markdown, sin título.\n" + _name_rule_es(cn) + "\n"
+            "Español de España natural, tono neutral y profesional, sin faltas de "
+            "ortografía, palabras corrientes (nunca 'embebido' ni vocabulario rebuscado).\n"
+            "3-5 frases, un único párrafo, sin viñetas."
+        )
+        prompt = (
+            f"Cliente: {cn}\nSector: {sec}\nPaís: {data.get('country', 'España')}\n"
+            f"Retos: {data.get('pain_points', '')}\n"
+            f"Info adicional: {data.get('extra_info', '')}\n\n"
+            f"Escribe el párrafo de contexto: presenta brevemente a {cn}, su sector y "
+            f"su situación, y por qué tiene sentido hablar de esta propuesta ahora."
+        )
+
+    with st.spinner("Generando contexto del cliente..."):
+        msg = client.messages.create(
+            model="claude-sonnet-4-6", max_tokens=600,
+            system=system, messages=[{"role": "user", "content": prompt}]
+        )
+    text = msg.content[0].text.strip().strip('"')
+    text = _truncate_wordwise(text, 600)
+    return _restore_client_name(text, cn)

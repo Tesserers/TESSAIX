@@ -7,6 +7,14 @@ opcionales (equipo con/sin Eduardo Serrano, sedes Madrid-sola o las 3,
 términos y condiciones + honorarios) como diapositivas o formas completas,
 y este módulo decide en tiempo de generación cuáles conservar y cuáles
 quitar, en vez de tener que maquetar nada desde cero.
+
+Las diapositivas de "Índice" y "Contexto" son la excepción: no vienen en
+la plantilla, así que se CLONAN a partir de una diapositiva ya existente
+que tiene el "cascarón" correcto (logo, línea, texto de sección, título,
+subtítulo, número de página) — se le quitan las tarjetas propias de esa
+diapositiva y se reutiliza el subtítulo como cuerpo de texto, dejando que
+el motor de ajuste (text_fit) lo redimensione. Así no hay que maquetar
+nada nuevo a mano ni arriesgarse a que no case con el estilo del resto.
 """
 from __future__ import annotations
 
@@ -20,7 +28,8 @@ from pathlib import Path
 
 from pptx import Presentation
 
-from .config import BUSINESS_LINE_HC_FINANCE, PLANTILLA_HC, PLANTILLA_HC_FINANCE
+from .ai_content import generate_context_paragraph
+from .config import BUSINESS_LINE_HC_FINANCE, PLANTILLA_HC, PLANTILLA_HC_FINANCE, SERVICES_HC
 from .team import LOCATIONS_MADRID_ONLY
 from .xml_utils import (
     enable_shrink_autofit,
@@ -34,17 +43,19 @@ from .xml_utils import (
 )
 
 # ─── SLIDES DE CADA PLANTILLA (numeración fija, 1-indexada) ───────────────
-# plantilla_hc.pptx (14 diapositivas):
-#  1 portada · 2 equipo (fijo) · 3 sedes (3 ciudades)
-#  4 por qué Tessera · 5 headhunting · 6 outsourcing · 7 salarial · 8 formación
-#  9 Tessera Services (estático) · 10-11 términos y condiciones · 12 honorarios
-#  13 confían en nosotros · 14 cierre
-HC_SLIDES_DYNAMIC_TEXT = ["slide4.xml", "slide5.xml", "slide6.xml", "slide7.xml", "slide8.xml"]
-HC_LOCATION_SLIDE = "slide3.xml"
-HC_TERMS_SLIDES = ["slide10.xml", "slide11.xml"]
-HC_FEE_SLIDE = "slide12.xml"
+# plantilla_hc.pptx (15 diapositivas antes de añadir Índice/Contexto):
+#  1 portada · 2 equipo (fijo) · 3 sedes (3 ciudades) · 4 sedes (solo Madrid)
+#  5 por qué Tessera · 6 headhunting · 7 outsourcing · 8 salarial · 9 formación
+#  10 Tessera Services (estático) · 11-12 términos y condiciones · 13 honorarios
+#  14 confían en nosotros · 15 cierre
+HC_SLIDES_DYNAMIC_TEXT = ["slide5.xml", "slide6.xml", "slide7.xml", "slide8.xml", "slide9.xml"]
+HC_LOCATION_SLIDES = {"all": "slide3.xml", "madrid": "slide4.xml"}
+HC_TERMS_SLIDES = ["slide11.xml", "slide12.xml"]
+HC_FEE_SLIDE = "slide13.xml"
+HC_SERVICE_SLIDES = {"headhunting": "slide6.xml", "outsourcing": "slide7.xml",
+                      "salary": "slide8.xml", "formacion": "slide9.xml"}
 
-# plantilla_hc_finance.pptx (15 diapositivas):
+# plantilla_hc_finance.pptx (15 diapositivas antes de añadir Índice/Contexto):
 #  1 portada · 2/3 "Tessera en una página" (3 sedes / solo Madrid, se
 #  conserva una y se borra la otra) · 4/5 equipo (sin/con Eduardo Serrano,
 #  igual: se conserva una) · 6 para el fondo · 7 servicios Finance
@@ -56,24 +67,37 @@ HCF_TEAM_SLIDES = {"no_eduardo": "slide4.xml", "con_eduardo": "slide5.xml"}
 HCF_TERMS_SLIDES = ["slide10.xml", "slide11.xml"]
 HCF_FEE_SLIDE = "slide12.xml"
 
-# Dentro de la diapositiva de sedes de plantilla_hc.pptx, estos son los
-# shapes de las tarjetas de Bilbao y Oviedo — se quitan para dejar solo
-# Madrid (no existe, en esta plantilla, una diapositiva alternativa ya
-# hecha como en la de HC+Finance).
-HC_LOCATION_BILBAO_SHAPES = [41, 36, 26, 27]
-HC_LOCATION_OVIEDO_SHAPES = [42, 37, 29, 30]
-
-# Texto de "3 ciudades" que hay que ajustar cuando solo se muestra Madrid.
-HC_LOCATION_CITY_COUNT_OLD = "3 CIUDADES"
-HC_LOCATION_CITY_COUNT_NEW = "1 CIUDAD"
-HC_LOCATION_CITIES_OLD = "Madrid · Bilbao · Oviedo"
-HC_LOCATION_CITIES_NEW = "Madrid"
-
 # Texto exacto (tal y como está en la plantilla) del bloque de garantía y
 # de la firma, común a las dos plantillas — ver team.py para las opciones.
 _WARRANTY_OLD = "dentro de los 3 meses siguientes a la fecha de contratación"
 _DATE_PLACEHOLDER = "{dd/mm/aaaa}"
 _FEE_OLD = "13%"
+
+# ─── DONANTES PARA CLONAR "ÍNDICE" Y "CONTEXTO" ───────────────────────────
+# Cada plantilla tiene ya una diapositiva con el "cascarón" que se necesita
+# (logo, línea, texto de sección, título grande, subtítulo de una línea,
+# número de página): en plantilla_hc.pptx es "Por qué Tessera" (slide5), en
+# plantilla_hc_finance.pptx su equivalente (slide9, mismo patrón con ids
+# distintos). Se clona dos veces, se le quitan las tarjetas propias de esa
+# diapositiva (quedan solo el título y el subtítulo, reutilizado como
+# cuerpo) y se reescribe el contenido.
+_HC_DONOR = {
+    "slide": "slide5.xml",
+    "prune_ids": [286, 287, 289, 290, 292, 293, 4, 16, 7, 15, 19, 13, 14, 17, 18, 20, 21, 5, 6],
+    "eyebrow_old": "NUESTRA FUERZA",
+    "title_old": "Expertos en el flujo de talento",
+    "body_old": "Procesos claros y compromisos que se cumplen: así movemos el talento.",
+}
+_HCF_DONOR = {
+    "slide": "slide9.xml",
+    "prune_ids": [185, 173, 174, 175, 176, 177, 183, 184, 186, 187, 188, 190, 191, 192, 193, 194, 195, 196, 197],
+    "eyebrow_old": "NOSOTROS",
+    "title_old": "Por qué Tessera",
+    "body_old": "Control, rigor financiero y talento al servicio de la tesis de inversión.",
+}
+
+_INDEX_SLIDE_FILE = "slide90.xml"
+_CONTEXT_SLIDE_FILE = "slide91.xml"
 
 
 def _read(path: Path) -> str:
@@ -84,7 +108,7 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, "utf-8")
 
 
-# ─── UTILIDADES DE PAQUETE (borrar diapositivas) ──────────────────────────
+# ─── UTILIDADES DE PAQUETE (borrar / duplicar diapositivas) ───────────────
 def _remove_slides(unpack: Path, slide_files: list[str]) -> None:
     """
     Quita por completo una o varias diapositivas del paquete .pptx: la
@@ -119,14 +143,61 @@ def _remove_slides(unpack: Path, slide_files: list[str]) -> None:
     _write(ct_path, content_types_xml)
 
 
+def _duplicate_slide(unpack: Path, source_slide_file: str, new_slide_file: str, insert_after_file: str) -> None:
+    """
+    Clona una diapositiva existente (XML + relaciones) y la inserta en el
+    orden visual justo después de `insert_after_file`. No duplica media
+    nueva: comparte las relaciones de la original (layout, imágenes
+    decorativas) — con eso basta para clonar un "cascarón" ya con el
+    estilo correcto, listo para que quien llame sustituya su contenido.
+    """
+    slides_dir = unpack / "ppt" / "slides"
+    rels_dir = slides_dir / "_rels"
+
+    shutil.copy(slides_dir / source_slide_file, slides_dir / new_slide_file)
+    src_rels = rels_dir / f"{source_slide_file}.rels"
+    if src_rels.exists():
+        shutil.copy(src_rels, rels_dir / f"{new_slide_file}.rels")
+
+    ct_path = unpack / "[Content_Types].xml"
+    ct = _read(ct_path)
+    override = (
+        f'<Override PartName="/ppt/slides/{new_slide_file}" '
+        f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'
+    )
+    _write(ct_path, ct.replace("</Types>", override + "</Types>"))
+
+    pres_rels_path = unpack / "ppt" / "_rels" / "presentation.xml.rels"
+    pres_rels = _read(pres_rels_path)
+    existing_rids = [int(m) for m in re.findall(r'Id="rId(\d+)"', pres_rels)]
+    new_rid = f"rId{max(existing_rids) + 1}"
+    relationship = (
+        f'<Relationship Id="{new_rid}" '
+        f'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" '
+        f'Target="slides/{new_slide_file}"/>'
+    )
+    pres_rels = pres_rels.replace("</Relationships>", relationship + "</Relationships>")
+    _write(pres_rels_path, pres_rels)
+
+    pres_path = unpack / "ppt" / "presentation.xml"
+    pres = _read(pres_path)
+    existing_ids = [int(m) for m in re.findall(r'<p:sldId\s+id="(\d+)"', pres)]
+    new_id = max(existing_ids) + 1
+    new_sldid = f'<p:sldId id="{new_id}" r:id="{new_rid}"/>'
+    insert_after_rid = resolve_rid_for_target(pres_rels, f"slides/{insert_after_file}")
+    anchor = re.search(r'<p:sldId\b[^>]*\br:id="%s"[^>]*/>' % re.escape(insert_after_rid), pres)
+    pres = pres[:anchor.end()] + new_sldid + pres[anchor.end():]
+    _write(pres_path, pres)
+
+
 def _renumber_visible_pages(pptx_bytes: bytes) -> bytes:
     """
-    Tras quitar diapositivas (sedes, equipo, términos y condiciones...) el
-    número de página visible en la esquina inferior derecha deja de ser
-    correlativo. Se recorren las diapositivas ya ensambladas y se
-    renumeran de forma secuencial las que tengan una forma con esa pinta
-    (texto de 1-3 dígitos, en la esquina inferior derecha) — la portada y
-    el cierre normalmente no llevan número, así que se saltan solas.
+    Tras quitar o añadir diapositivas, el número de página visible en la
+    esquina inferior derecha deja de ser correlativo. Se recorren las
+    diapositivas ya ensambladas y se renumeran de forma secuencial las que
+    tengan una forma con esa pinta (texto de 1-3 dígitos, en la esquina
+    inferior derecha) — la portada y el cierre normalmente no llevan
+    número, así que se saltan solas.
     """
     prs = Presentation(io.BytesIO(pptx_bytes))
     slide_w, slide_h = prs.slide_width, prs.slide_height
@@ -155,6 +226,66 @@ def _renumber_visible_pages(pptx_bytes: bytes) -> bytes:
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()
+
+
+# ─── ÍNDICE Y CONTEXTO (compartido) ────────────────────────────────────
+def _build_info_slide(
+    unpack: Path, donor: dict, new_slide_file: str, insert_after_file: str,
+    eyebrow: str, title: str, body: str,
+) -> None:
+    _duplicate_slide(unpack, donor["slide"], new_slide_file, insert_after_file)
+    path = unpack / "ppt" / "slides" / new_slide_file
+    s = _read(path)
+    for shape_id in donor["prune_ids"]:
+        s = remove_shape_by_id(s, shape_id)
+    s = replace_text_in_xml(s, donor["eyebrow_old"], eyebrow)
+    s = replace_text_and_fit(s, donor["title_old"], title, role="title")
+    s = replace_text_and_fit(s, donor["body_old"], body)
+    s = enable_shrink_autofit(s)
+    _write(path, s)
+
+
+def _index_items(data: dict) -> list[str]:
+    is_hc_finance = data.get("business_line") == BUSINESS_LINE_HC_FINANCE
+    include_fee = data.get("deck_type") == "propuesta"
+    if is_hc_finance:
+        items = [
+            "Contexto", "Tessera en una página", "Nuestro equipo",
+            "Para el fondo", "Servicios Finance", "Servicios Human Capital",
+            "Por qué Tessera",
+        ]
+        if include_fee:
+            items.append("Honorarios")
+        items += ["Confían en nosotros", "Contacto"]
+    else:
+        items = ["Contexto", "Nuestro equipo", "Dónde estamos", "Por qué Tessera"]
+        items += [SERVICES_HC.get(s, s) for s in data.get("services", [])]
+        if include_fee:
+            items.append("Honorarios")
+        items.append("Confían en nosotros")
+    return items
+
+
+def _build_index_and_context(data: dict, unpack: Path, donor: dict) -> None:
+    items = _index_items(data)
+    index_body = "\n".join(f"{i:02d}.  {name}" for i, name in enumerate(items, 1))
+    _build_info_slide(
+        unpack, donor, _INDEX_SLIDE_FILE, "slide1.xml",
+        eyebrow="NOSOTROS", title="Índice", body=index_body,
+    )
+
+    try:
+        context_body = generate_context_paragraph(data)
+    except Exception:
+        context_body = None
+    context_body = context_body or (
+        f"Tessera trabaja junto a {data.get('client_name', 'tu empresa')} para responder "
+        f"a sus necesidades actuales con un equipo senior y un enfoque directo."
+    )
+    _build_info_slide(
+        unpack, donor, _CONTEXT_SLIDE_FILE, _INDEX_SLIDE_FILE,
+        eyebrow="NOSOTROS", title="Contexto", body=context_body,
+    )
 
 
 # ─── TÉRMINOS Y CONDICIONES + HONORARIOS (compartido) ─────────────────────
@@ -187,25 +318,15 @@ def _apply_terms_and_fee(
 
 
 # ─── HUMAN CAPITAL (solo) ──────────────────────────────────────────────
-def _apply_hc_location(unpack: Path, show_all: bool) -> None:
-    if show_all:
-        return
-    path = unpack / "ppt" / "slides" / HC_LOCATION_SLIDE
-    if not path.exists():
-        return
-    s = _read(path)
-    for shape_id in HC_LOCATION_BILBAO_SHAPES + HC_LOCATION_OVIEDO_SHAPES:
-        s = remove_shape_by_id(s, shape_id)
-    s = replace_text_in_xml(s, HC_LOCATION_CITY_COUNT_OLD, HC_LOCATION_CITY_COUNT_NEW)
-    s = replace_text_in_xml(s, HC_LOCATION_CITIES_OLD, HC_LOCATION_CITIES_NEW)
-    _write(path, s)
-
-
 def _build_hc(data: dict, content: dict, unpack: Path) -> None:
     slides = unpack / "ppt" / "slides"
     r = replace_text_and_fit
 
-    _apply_hc_location(unpack, data.get("locations", "all") != LOCATIONS_MADRID_ONLY)
+    _build_index_and_context(data, unpack, _HC_DONOR)
+
+    show_all_locations = data.get("locations", "all") != LOCATIONS_MADRID_ONLY
+    drop_location = HC_LOCATION_SLIDES["madrid" if show_all_locations else "all"]
+    _remove_slides(unpack, [drop_location])
 
     why = content.get("why_tessera", {})
     svcs = content.get("services", {})
@@ -213,19 +334,19 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
 
     # ── Por qué Tessera ─────────────────────────────────────────────
     if why:
-        s = _read(slides / "slide4.xml")
+        s = _read(slides / "slide5.xml")
         if why.get("d1_title"): s = r(s, "Sin CVs al azar", why["d1_title"])
         if why.get("d1_body"):  s = r(s, "No enviamos el primer CV, buscamos a quien encaja de verdad. Candidatos filtrados sobre la mesa en 72 horas.", why["d1_body"])
         if why.get("d2_title"): s = r(s, "Sin pausas", why["d2_title"])
         if why.get("d2_body"):  s = r(s, "Tu servicio no parará.", why["d2_body"])
         if why.get("d3_title"): s = r(s, "Siempre contigo", why["d3_title"])
         if why.get("d3_body"):  s = r(s, "No desaparecemos tras la incorporación: cuidamos a la persona y al cliente.", why["d3_body"])
-        _write(slides / "slide4.xml", s)
+        _write(slides / "slide5.xml", s)
 
     # ── Headhunting ──────────────────────────────────────────────────
     if "headhunting" in services and svcs.get("headhunting"):
         hh = svcs["headhunting"]
-        s = _read(slides / "slide5.xml")
+        s = _read(slides / "slide6.xml")
         if hh.get("why_col_title1"): s = r(s, "VELOCIDAD", hh["why_col_title1"])
         if hh.get("why_col_body1"):  s = r(s, "Disponemos de nuestra propia metodología, la cual nos permite presentar candidatos a tiempo.", hh["why_col_body1"])
         if hh.get("why_col_title2"): s = r(s, "ESPECIALIZACIÓN", hh["why_col_title2"])
@@ -238,39 +359,37 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
         if hh.get("how_body3"): s = r(s, "Habilidades, actitud y encaje cultural.", hh["how_body3"])
         if hh.get("how_body4"): s = r(s, "Únicamente candidatos que realmente suman.", hh["how_body4"])
         if hh.get("how_body5"): s = r(s, "Contigo también después de la incorporación.", hh["how_body5"])
-        _write(slides / "slide5.xml", s)
+        _write(slides / "slide6.xml", s)
 
     # ── Outsourcing ──────────────────────────────────────────────────
     if "outsourcing" in services and svcs.get("outsourcing"):
         outs = svcs["outsourcing"]
-        s = _read(slides / "slide6.xml")
+        s = _read(slides / "slide7.xml")
         if outs.get("headline"): s = r(s, "Externalización que sí funciona: pagas por trabajo real, sin papeleos.", outs["headline"])
         if outs.get("body"):     s = r(s, "Contratar cuesta más de lo que parece. Con el modelo Time & Material ajustas el equipo a tu actividad real y nosotros nos encargamos de toda la gestión.", outs["body"])
         if outs.get("card1_body"): s = r(s, "Pagas solo por horas reales de trabajo.", outs["card1_body"])
         if outs.get("card2_body"): s = r(s, "Cubrimos bajas y vacaciones.", outs["card2_body"])
         if outs.get("card3_body"): s = r(s, "Nóminas y trámites, a cargo nuestro.", outs["card3_body"])
         if outs.get("card4_body"): s = r(s, "Escalas el equipo cuando quieras.", outs["card4_body"])
-        _write(slides / "slide6.xml", s)
+        _write(slides / "slide7.xml", s)
 
     # ── Consultoría Salarial ─────────────────────────────────────────
     if "salary" in services and svcs.get("salary"):
         sal = svcs["salary"]
-        s = _read(slides / "slide7.xml")
+        s = _read(slides / "slide8.xml")
         if sal.get("headline"): s = r(s, "Inteligencia retributiva para decisiones que importan.", sal["headline"])
         if sal.get("body"):     s = r(s, "Acompañamos a organizaciones en el diseño de estructuras salariales coherentes, alineadas con el mercado y preparadas para el nuevo marco regulatorio europeo.", sal["body"])
-        _write(slides / "slide7.xml", s)
+        _write(slides / "slide8.xml", s)
 
     # ── Formación ────────────────────────────────────────────────────
     if "formacion" in services and svcs.get("formacion"):
         form = svcs["formacion"]
-        s = _read(slides / "slide8.xml")
+        s = _read(slides / "slide9.xml")
         if form.get("body"): s = r(s, "Potenciamos el talento interno: consultoría en formación orientada a procesos y resultados ágiles.", form["body"])
-        _write(slides / "slide8.xml", s)
+        _write(slides / "slide9.xml", s)
 
     # ── Diapositivas de servicio no seleccionadas: se quitan ─────────
-    all_service_slides = {"headhunting": "slide5.xml", "outsourcing": "slide6.xml",
-                           "salary": "slide7.xml", "formacion": "slide8.xml"}
-    to_remove = [fn for key, fn in all_service_slides.items() if key not in services]
+    to_remove = [fn for key, fn in HC_SERVICE_SLIDES.items() if key not in services]
     if to_remove:
         _remove_slides(unpack, to_remove)
 
@@ -290,6 +409,8 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
 
 # ─── HUMAN CAPITAL + FINANCE ────────────────────────────────────────────
 def _build_hc_finance(data: dict, content: dict, unpack: Path) -> None:
+    _build_index_and_context(data, unpack, _HCF_DONOR)
+
     show_all_locations = data.get("locations", "all") == "all"
     keep_location = HCF_LOCATION_SLIDES["all" if show_all_locations else "madrid"]
     drop_location = HCF_LOCATION_SLIDES["madrid" if show_all_locations else "all"]
