@@ -170,6 +170,7 @@ def fit_scale(
     box_width_pt: float,
     box_height_pt: float,
     min_scale: float | None = None,
+    min_font_pt: float | None = None,
 ) -> FitResult:
     """
     Dado un conjunto de párrafos (cada uno con "text", "size_pt",
@@ -182,16 +183,18 @@ def fit_scale(
       entonces hacer crecer la caja en vez de seguir reduciendo el texto.
 
     `min_scale=None` (por defecto) calcula el suelo a partir de
-    `MIN_FONT_SIZE_PT` y el tamaño de fuente más pequeño del grupo — así un
-    cuerpo de texto nunca baja de ese tamaño absoluto. Pásalo explícitamente
-    a `1.0` para contenido que no debe encogerse nunca (p.ej. subtítulos).
+    `min_font_pt` (o `MIN_FONT_SIZE_PT` si no se indica) y el tamaño de
+    fuente más pequeño del grupo — así un cuerpo de texto nunca baja de ese
+    tamaño absoluto. Pásalo explícitamente a `1.0` para contenido que no
+    debe encogerse nunca (p.ej. subtítulos).
     """
     if not paragraphs or box_width_pt <= 0 or box_height_pt <= 0:
         return FitResult(1.0, 0.0, True)
 
     if min_scale is None:
+        floor_pt = min_font_pt if min_font_pt is not None else MIN_FONT_SIZE_PT
         smallest_size = min((p["size_pt"] for p in paragraphs if p.get("size_pt")), default=None)
-        min_scale = (MIN_FONT_SIZE_PT / smallest_size) if smallest_size else MIN_SCALE
+        min_scale = (floor_pt / smallest_size) if smallest_size else MIN_SCALE
     min_scale = max(0.0, min(min_scale, 1.0))
 
     target = box_height_pt * SAFETY_MARGIN

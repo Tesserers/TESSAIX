@@ -99,6 +99,17 @@ _HCF_DONOR = {
 _INDEX_SLIDE_FILE = "slide90.xml"
 _CONTEXT_SLIDE_FILE = "slide91.xml"
 
+# El cuerpo donante es un subtítulo de una sola línea (pensado para una
+# frase corta), así que de fábrica su caja es minúscula. Para el Índice
+# (una lista de 8-10 líneas) eso lo forzaría a encogerse hasta quedar
+# diminuto; le damos explícitamente más tamaño de partida, un suelo más
+# alto y mucho más alto de caja disponible (hay hueco de sobra entre el
+# título y el número de página, una vez quitadas las tarjetas propias de
+# la diapositiva donante).
+_INDEX_BODY_BASE_SCALE = 1.15
+_INDEX_BODY_MIN_FONT_PT = 14.0
+_INDEX_BODY_PRESET_HEIGHT_PT = 330.0
+
 
 def _read(path: Path) -> str:
     return path.read_text("utf-8")
@@ -232,6 +243,8 @@ def _renumber_visible_pages(pptx_bytes: bytes) -> bytes:
 def _build_info_slide(
     unpack: Path, donor: dict, new_slide_file: str, insert_after_file: str,
     eyebrow: str, title: str, body: str,
+    body_base_scale: float = 1.0, body_min_font_pt: float | None = None,
+    body_preset_height_pt: float | None = None,
 ) -> None:
     _duplicate_slide(unpack, donor["slide"], new_slide_file, insert_after_file)
     path = unpack / "ppt" / "slides" / new_slide_file
@@ -240,7 +253,10 @@ def _build_info_slide(
         s = remove_shape_by_id(s, shape_id)
     s = replace_text_in_xml(s, donor["eyebrow_old"], eyebrow)
     s = replace_text_and_fit(s, donor["title_old"], title, role="title")
-    s = replace_text_and_fit(s, donor["body_old"], body)
+    s = replace_text_and_fit(
+        s, donor["body_old"], body,
+        base_scale=body_base_scale, min_font_pt=body_min_font_pt, preset_height_pt=body_preset_height_pt,
+    )
     s = enable_shrink_autofit(s)
     _write(path, s)
 
@@ -272,6 +288,8 @@ def _build_index_and_context(data: dict, unpack: Path, donor: dict) -> None:
     _build_info_slide(
         unpack, donor, _INDEX_SLIDE_FILE, "slide1.xml",
         eyebrow="NOSOTROS", title="Índice", body=index_body,
+        body_base_scale=_INDEX_BODY_BASE_SCALE, body_min_font_pt=_INDEX_BODY_MIN_FONT_PT,
+        body_preset_height_pt=_INDEX_BODY_PRESET_HEIGHT_PT,
     )
 
     try:

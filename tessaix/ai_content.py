@@ -193,6 +193,27 @@ Devuelve este JSON con contenido REAL y COMPLETO (no placeholders):
     return _restore_client_name_everywhere(content, cn)
 
 
+def _text_from_response(msg) -> str:
+    """
+    Concatena solo los bloques de texto final de la respuesta — con la
+    herramienta de búsqueda web activada, `msg.content` también trae
+    bloques intermedios (`server_tool_use`, `web_search_tool_result`) que
+    no son el texto que queremos.
+    """
+    return "".join(block.text for block in msg.content if block.type == "text").strip()
+
+
+# Herramienta de búsqueda web nativa de Claude: el propio modelo decide si
+# le hace falta buscar y qué buscar, y la API ejecuta la búsqueda — no hace
+# falta gestionar nosotros ninguna API de búsqueda ni el bucle de tool use.
+def _web_search_tool(data: dict) -> dict:
+    tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 3}
+    country = (data.get("country") or "España").strip().lower()
+    if country in ("españa", "spain", "es"):
+        tool["user_location"] = {"type": "approximate", "country": "ES"}
+    return tool
+
+
 def generate_context_paragraph(data: dict) -> str | None:
     """
     Párrafo de la diapositiva de "Contexto": una introducción breve a la
@@ -200,6 +221,13 @@ def generate_context_paragraph(data: dict) -> str | None:
     el formato de propuestas con una diapositiva de contexto dedicada).
     Se usa igual en Human Capital y en Human Capital + Finance — es el
     único contenido generado por IA que llevan las dos líneas de negocio.
+
+    Antes de escribir, el modelo puede buscar en internet información
+    pública real sobre el cliente (sector, tamaño, actividad reciente) para
+    que el párrafo sea específico de esa empresa y no una plantilla
+    genérica rellenada con el nombre. Si la búsqueda no encuentra nada
+    fiable, se le exige no inventar datos concretos y quedarse en un texto
+    más general sobre el sector — nunca una cifra o hecho inventado.
     """
     client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
     is_en = data.get("lang") == "en"
@@ -211,7 +239,14 @@ def generate_context_paragraph(data: dict) -> str | None:
             "Return ONLY the paragraph's plain text — no quotes, no JSON, no markdown, "
             "no title.\n" + _name_rule_en(cn) + "\n"
             "Neutral, professional tone, no spelling mistakes, plain everyday words.\n"
-            "3-5 sentences, one single paragraph, no bullet points."
+            "3-5 sentences, one single paragraph, no bullet points.\n"
+            "You have a web_search tool: use it to look up real, public information about "
+            "the client company (what it does, its size, recent relevant activity) so the "
+            "paragraph is specific to this company, not a generic template. Only use facts "
+            "you actually found this way — if the search finds nothing reliable about this "
+            "specific company, do NOT invent names, numbers, dates or facts: fall back to a "
+            "general paragraph about the company's sector and situation instead. Never cite "
+            "sources or mention that you searched — just write the paragraph."
         )
         prompt = (
             f"Client: {cn}\nSector: {sec}\nCountry: {data.get('country', 'Spain')}\n"
@@ -227,7 +262,15 @@ def generate_context_paragraph(data: dict) -> str | None:
             "markdown, sin título.\n" + _name_rule_es(cn) + "\n"
             "Español de España natural, tono neutral y profesional, sin faltas de "
             "ortografía, palabras corrientes (nunca 'embebido' ni vocabulario rebuscado).\n"
-            "3-5 frases, un único párrafo, sin viñetas."
+            "3-5 frases, un único párrafo, sin viñetas.\n"
+            "Tienes una herramienta web_search: úsala para buscar información pública real "
+            "sobre la empresa cliente (a qué se dedica, su tamaño, actividad reciente "
+            "relevante) para que el párrafo sea específico de esa empresa y no una plantilla "
+            "genérica. Usa solo datos que hayas encontrado así — si la búsqueda no encuentra "
+            "nada fiable sobre esta empresa en concreto, NO inventes nombres, cifras, fechas "
+            "ni hechos: en ese caso escribe un párrafo más general sobre el sector y la "
+            "situación del cliente. Nunca cites fuentes ni menciones que has buscado — "
+            "escribe directamente el párrafo."
         )
         prompt = (
             f"Cliente: {cn}\nSector: {sec}\nPaís: {data.get('country', 'España')}\n"
@@ -237,11 +280,12 @@ def generate_context_paragraph(data: dict) -> str | None:
             f"su situación, y por qué tiene sentido hablar de esta propuesta ahora."
         )
 
-    with st.spinner("Generando contexto del cliente..."):
+    with st.spinner("Buscando información del cliente y generando contexto..."):
         msg = client.messages.create(
-            model="claude-sonnet-4-6", max_tokens=600,
-            system=system, messages=[{"role": "user", "content": prompt}]
+            model="claude-sonnet-4-6", max_tokens=1200,
+            system=system, messages=[{"role": "user", "content": prompt}],
+            tools=[_web_search_tool(data)],
         )
-    text = msg.content[0].text.strip().strip('"')
+    text = _text_from_response(msg).strip('"')
     text = _truncate_wordwise(text, 600)
     return _restore_client_name(text, cn)

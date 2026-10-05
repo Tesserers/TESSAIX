@@ -196,7 +196,11 @@ def _apply_sz_scale(shape_xml: str, scale: float) -> str:
     )
 
 
-def replace_text_and_fit(slide_xml: str, old: str, new: str, role: str = "body") -> str:
+def replace_text_and_fit(
+    slide_xml: str, old: str, new: str, role: str = "body",
+    base_scale: float = 1.0, min_font_pt: float | None = None,
+    preset_height_pt: float | None = None,
+) -> str:
     """
     Igual que `replace_text_in_xml`, pero además comprueba si el texto
     resultante cabe en la caja real de la forma que lo contiene (todos sus
@@ -208,10 +212,11 @@ def replace_text_and_fit(slide_xml: str, old: str, new: str, role: str = "body")
        PowerPoint, LibreOffice, Google Slides, etc.
     2. Si ni así cabe, no se sigue encogiendo (quedaría ilegible): se hace
        crecer la caja hasta el alto que haga falta, limitado a
-       `text_fit.MAX_GROW_MULTIPLIER` veces su alto original. Quien llama
-       es responsable de comprobar si la forma creció (con
-       `get_shape_ext_emu` antes/después) y desplazar lo que tenga debajo
-       — ver `shift_shape_y` y `pptx_builder._replace_title_and_push`.
+       `text_fit.MAX_GROW_MULTIPLIER` veces su alto original (o a
+       `max_height_pt`, si se indica). Quien llama es responsable de
+       comprobar si la forma creció (con `get_shape_ext_emu` antes/después)
+       y desplazar lo que tenga debajo — ver `shift_shape_y` y
+       `pptx_builder._replace_title_and_push`.
     3. Si ni haciendo crecer la caja hasta ese tope cabe (texto realmente
        desmedido), se prioriza no salirse de la diapositiva por encima de
        mantener el tamaño: se encoge más allá del suelo normal, hasta
@@ -219,8 +224,22 @@ def replace_text_and_fit(slide_xml: str, old: str, new: str, role: str = "body")
 
     `role="title"` usa un suelo de encogido muy leve (rara vez se nota) en
     el paso 1; `role="body"` (por defecto) usa el suelo absoluto de
-    `text_fit.MIN_FONT_SIZE_PT`. El paso 3 (último recurso) es igual para
-    ambos roles.
+    `text_fit.MIN_FONT_SIZE_PT` (o `min_font_pt`, si se indica). El paso 3
+    (último recurso) es igual para ambos roles.
+
+    `base_scale` escala el tamaño de fuente ORIGINAL de la plantilla antes
+    de calcular nada — útil para que un bloque reutilizado (p.ej. un
+    subtítulo clonado para servir de cuerpo de una lista) arranque más
+    grande que el texto donante, en vez de partir de su tamaño pensado para
+    una sola línea corta.
+
+    `preset_height_pt`, si se indica, agranda la caja a (al menos) ese alto
+    ANTES de medir si el texto cabe — así el cálculo de encogido se hace
+    contra el espacio real disponible en la diapositiva, no contra la caja
+    original del donante (normalmente pensada para una sola línea). Sin
+    esto, el motor encogería primero hasta el suelo de su rol para intentar
+    caber en la caja pequeña, y solo crecería la caja como último recurso —
+    quedando innecesariamente diminuto incluso habiendo hueco de sobra.
     """
     min_scale = _TITLE_MIN_SCALE if role == "title" else None
 
@@ -237,6 +256,12 @@ def replace_text_and_fit(slide_xml: str, old: str, new: str, role: str = "body")
         if replaced == shape_xml:
             return shape_xml  # este shape no contenía el texto a sustituir
 
+        if base_scale != 1.0:
+            replaced = _apply_sz_scale(replaced, base_scale)
+
+        if preset_height_pt is not None:
+            replaced = _grow_shape_height(replaced, text_fit.pt_to_emu(preset_height_pt))
+
         usable_area = _shape_usable_area_pt(replaced)
         if usable_area is None:
             return replaced
@@ -249,7 +274,9 @@ def replace_text_and_fit(slide_xml: str, old: str, new: str, role: str = "body")
         if not paragraphs:
             return replaced
 
-        result = text_fit.fit_scale(paragraphs, usable_w_pt, usable_h_pt, min_scale=min_scale)
+        result = text_fit.fit_scale(
+            paragraphs, usable_w_pt, usable_h_pt, min_scale=min_scale, min_font_pt=min_font_pt,
+        )
         if result.scale >= 0.999 and result.fits:
             return replaced
 
