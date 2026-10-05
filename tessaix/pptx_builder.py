@@ -100,15 +100,22 @@ _INDEX_SLIDE_FILE = "slide90.xml"
 _CONTEXT_SLIDE_FILE = "slide91.xml"
 
 # El cuerpo donante es un subtítulo de una sola línea (pensado para una
-# frase corta), así que de fábrica su caja es minúscula. Para el Índice
-# (una lista de 8-10 líneas) eso lo forzaría a encogerse hasta quedar
-# diminuto; le damos explícitamente más tamaño de partida, un suelo más
-# alto y mucho más alto de caja disponible (hay hueco de sobra entre el
-# título y el número de página, una vez quitadas las tarjetas propias de
-# la diapositiva donante).
-_INDEX_BODY_BASE_SCALE = 1.15
-_INDEX_BODY_MIN_FONT_PT = 14.0
-_INDEX_BODY_PRESET_HEIGHT_PT = 330.0
+# frase corta), así que de fábrica su caja es minúscula. Tanto el Índice
+# (8-10 líneas) como el Contexto (un párrafo de varias frases) lo
+# forzarían a encogerse hasta quedar diminuto; a los dos les damos
+# explícitamente más tamaño de partida, un suelo más alto y mucho más alto
+# de caja disponible (hay hueco de sobra entre el título y el número de
+# página, una vez quitadas las tarjetas propias de la diapositiva donante).
+_CLONE_BODY_BASE_SCALE = 1.15
+_CLONE_BODY_MIN_FONT_PT = 14.0
+_CLONE_BODY_PRESET_HEIGHT_PT = 330.0
+
+# Las tres tarjetas de cada columna de servicio (p.ej. headhunting) tienen
+# un rectángulo redondeado de FONDO con tamaño fijo detrás del cuadro de
+# texto: si el texto generado por IA crece más de la cuenta, puede crecer
+# más allá del borde visible de esa tarjeta. Este tope obliga a encoger el
+# texto en vez de salirse de la tarjeta.
+_SERVICE_CARD_GROW_CEILING_PT = 203.0
 
 
 def _read(path: Path) -> str:
@@ -288,8 +295,8 @@ def _build_index_and_context(data: dict, unpack: Path, donor: dict) -> None:
     _build_info_slide(
         unpack, donor, _INDEX_SLIDE_FILE, "slide1.xml",
         eyebrow="NOSOTROS", title="Índice", body=index_body,
-        body_base_scale=_INDEX_BODY_BASE_SCALE, body_min_font_pt=_INDEX_BODY_MIN_FONT_PT,
-        body_preset_height_pt=_INDEX_BODY_PRESET_HEIGHT_PT,
+        body_base_scale=_CLONE_BODY_BASE_SCALE, body_min_font_pt=_CLONE_BODY_MIN_FONT_PT,
+        body_preset_height_pt=_CLONE_BODY_PRESET_HEIGHT_PT,
     )
 
     try:
@@ -303,6 +310,8 @@ def _build_index_and_context(data: dict, unpack: Path, donor: dict) -> None:
     _build_info_slide(
         unpack, donor, _CONTEXT_SLIDE_FILE, _INDEX_SLIDE_FILE,
         eyebrow="NOSOTROS", title="Contexto", body=context_body,
+        body_base_scale=_CLONE_BODY_BASE_SCALE, body_min_font_pt=_CLONE_BODY_MIN_FONT_PT,
+        body_preset_height_pt=_CLONE_BODY_PRESET_HEIGHT_PT,
     )
 
 
@@ -362,21 +371,26 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
         _write(slides / "slide5.xml", s)
 
     # ── Headhunting ──────────────────────────────────────────────────
+    # Las 3 columnas son tarjetas con un rectángulo redondeado de fondo de
+    # tamaño FIJO: hay que topar el crecimiento del texto (grow_ceiling_pt)
+    # para que nunca se salga del borde visible de la tarjeta — si no cabe
+    # ni creciendo hasta ese tope, se prioriza encogerlo más.
     if "headhunting" in services and svcs.get("headhunting"):
         hh = svcs["headhunting"]
+        gc = _SERVICE_CARD_GROW_CEILING_PT
         s = _read(slides / "slide6.xml")
-        if hh.get("why_col_title1"): s = r(s, "VELOCIDAD", hh["why_col_title1"])
-        if hh.get("why_col_body1"):  s = r(s, "Disponemos de nuestra propia metodología, la cual nos permite presentar candidatos a tiempo.", hh["why_col_body1"])
-        if hh.get("why_col_title2"): s = r(s, "ESPECIALIZACIÓN", hh["why_col_title2"])
-        if hh.get("why_col_body2"):  s = r(s, "Conocemos tu sector y cómo se construyen sus equipos.", hh["why_col_body2"])
-        if hh.get("why_col_title3"): s = r(s, "ÉXITO COMPARTIDO", hh["why_col_title3"])
-        if hh.get("why_col_body3"):  s = r(s, "El equipo que lleva tu negocio al siguiente nivel.", hh["why_col_body3"])
-        if hh.get("benefits_body1"): s = r(s, "Nos ocupamos de todo. Tú solo conoces a los mejores.", hh["benefits_body1"])
-        if hh.get("benefits_body2"): s = r(s, "Candidatos que no solo encajan: impulsan tu crecimiento.", hh["benefits_body2"])
-        if hh.get("benefits_body3"): s = r(s, "Tu éxito es también el nuestro.", hh["benefits_body3"])
-        if hh.get("how_body3"): s = r(s, "Habilidades, actitud y encaje cultural.", hh["how_body3"])
-        if hh.get("how_body4"): s = r(s, "Únicamente candidatos que realmente suman.", hh["how_body4"])
-        if hh.get("how_body5"): s = r(s, "Contigo también después de la incorporación.", hh["how_body5"])
+        if hh.get("why_col_title1"): s = r(s, "VELOCIDAD", hh["why_col_title1"], grow_ceiling_pt=gc)
+        if hh.get("why_col_body1"):  s = r(s, "Disponemos de nuestra propia metodología, la cual nos permite presentar candidatos a tiempo.", hh["why_col_body1"], grow_ceiling_pt=gc)
+        if hh.get("why_col_title2"): s = r(s, "ESPECIALIZACIÓN", hh["why_col_title2"], grow_ceiling_pt=gc)
+        if hh.get("why_col_body2"):  s = r(s, "Conocemos tu sector y cómo se construyen sus equipos.", hh["why_col_body2"], grow_ceiling_pt=gc)
+        if hh.get("why_col_title3"): s = r(s, "ÉXITO COMPARTIDO", hh["why_col_title3"], grow_ceiling_pt=gc)
+        if hh.get("why_col_body3"):  s = r(s, "El equipo que lleva tu negocio al siguiente nivel.", hh["why_col_body3"], grow_ceiling_pt=gc)
+        if hh.get("benefits_body1"): s = r(s, "Nos ocupamos de todo. Tú solo conoces a los mejores.", hh["benefits_body1"], grow_ceiling_pt=gc)
+        if hh.get("benefits_body2"): s = r(s, "Candidatos que no solo encajan: impulsan tu crecimiento.", hh["benefits_body2"], grow_ceiling_pt=gc)
+        if hh.get("benefits_body3"): s = r(s, "Tu éxito es también el nuestro.", hh["benefits_body3"], grow_ceiling_pt=gc)
+        if hh.get("how_body3"): s = r(s, "Habilidades, actitud y encaje cultural.", hh["how_body3"], grow_ceiling_pt=gc)
+        if hh.get("how_body4"): s = r(s, "Únicamente candidatos que realmente suman.", hh["how_body4"], grow_ceiling_pt=gc)
+        if hh.get("how_body5"): s = r(s, "Contigo también después de la incorporación.", hh["how_body5"], grow_ceiling_pt=gc)
         _write(slides / "slide6.xml", s)
 
     # ── Outsourcing ──────────────────────────────────────────────────

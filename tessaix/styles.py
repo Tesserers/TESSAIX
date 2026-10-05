@@ -52,6 +52,7 @@ def inject_css():
     html,body,[class*="css"]{font-family:'Raleway',sans-serif!important}
     [data-testid="stHeader"]{display:none}
     [data-testid="stAppViewContainer"]{background:#fafaf8}
+    [data-testid="stHeaderActionElements"]{display:none!important}
     .hdr{background:#202031;padding:14px 28px;display:flex;align-items:center;
           justify-content:space-between;margin:-1rem -1rem 2rem -1rem}
     .hb{background:#58757922;color:#587579;border-radius:4px;

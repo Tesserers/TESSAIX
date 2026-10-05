@@ -199,7 +199,7 @@ def _apply_sz_scale(shape_xml: str, scale: float) -> str:
 def replace_text_and_fit(
     slide_xml: str, old: str, new: str, role: str = "body",
     base_scale: float = 1.0, min_font_pt: float | None = None,
-    preset_height_pt: float | None = None,
+    preset_height_pt: float | None = None, grow_ceiling_pt: float | None = None,
 ) -> str:
     """
     Igual que `replace_text_in_xml`, pero además comprueba si el texto
@@ -240,6 +240,14 @@ def replace_text_and_fit(
     esto, el motor encogería primero hasta el suelo de su rol para intentar
     caber en la caja pequeña, y solo crecería la caja como último recurso —
     quedando innecesariamente diminuto incluso habiendo hueco de sobra.
+
+    `grow_ceiling_pt`, si se indica, limita lo que el paso 2 puede crecer la
+    caja (por debajo de `text_fit.MAX_GROW_MULTIPLIER` si hace falta) —
+    imprescindible cuando detrás de la caja de texto hay una forma
+    decorativa de tamaño FIJO (p.ej. la tarjeta redondeada de un servicio):
+    sin este tope, el texto podría crecer más allá del borde visible de esa
+    tarjeta. Con el tope puesto, si el texto no cabe ni creciendo hasta ahí,
+    se prioriza encogerlo más (paso 3) antes que salirse de la tarjeta.
     """
     min_scale = _TITLE_MIN_SCALE if role == "title" else None
 
@@ -293,6 +301,8 @@ def replace_text_and_fit(
         insets_pt = text_fit.emu_to_pt(t_ins + b_ins)
         original_box_h_pt = usable_h_pt + insets_pt
         max_box_h_pt = original_box_h_pt * text_fit.MAX_GROW_MULTIPLIER
+        if grow_ceiling_pt is not None:
+            max_box_h_pt = min(max_box_h_pt, grow_ceiling_pt)
         needed_box_h_pt = result.required_height_pt * text_fit.GROW_BUFFER + insets_pt
 
         if needed_box_h_pt <= max_box_h_pt:
@@ -394,19 +404,33 @@ def remove_content_type_override(content_types_xml: str, part_name: str) -> str:
     )
 
 
+# Cualquiera de estos puede llevar el <p:cNvPr id="..."> que identifica una
+# forma. Un elemento de este tipo nunca anida otro del MISMO tipo dentro
+# (salvo <p:grpSp>, que sí puede anidar cualquiera de los demás), así que
+# basta con exigir que no aparezca un cierre de su propia etiqueta antes de
+# encontrar el id buscado.
+_REMOVABLE_TAGS = ("p:sp", "p:pic", "p:graphicFrame", "p:grpSp", "p:cxnSp")
+
+
 def remove_shape_by_id(slide_xml: str, shape_id: int) -> str:
     """
-    Quita por completo el <p:sp>...</p:sp> cuyo <p:cNvPr id="shape_id" .../>
-    coincide. Un <p:sp> normal nunca anida otro <p:sp> dentro (solo lo hacen
-    los <p:grpSp>), así que basta con exigir que no aparezca un </p:sp> de
-    cierre antes de encontrar el id buscado, igual que ya se hace para
-    aislar el <p:pic> del logo del cliente.
+    Quita por completo el elemento (forma, imagen, gráfico agrupado…) cuyo
+    <p:cNvPr id="shape_id" .../> coincide — sea cual sea su tipo de
+    contenedor. Las decoraciones clonadas de otra diapositiva (p.ej. el
+    gráfico de fondo con forma de onda) son casi siempre <p:pic>, no
+    <p:sp>, así que hace falta probar varios tipos de etiqueta en vez de
+    asumir siempre <p:sp> como antes.
     """
-    pattern = re.compile(
-        r'<p:sp>(?:(?!</p:sp>).)*?<p:cNvPr\b[^>]*\bid="%d"(?:(?!</p:sp>).)*?</p:sp>' % shape_id,
-        re.DOTALL,
-    )
-    return pattern.sub('', slide_xml, count=1)
+    for tag in _REMOVABLE_TAGS:
+        pattern = re.compile(
+            r'<%s>(?:(?!</%s>).)*?<p:cNvPr\b[^>]*\bid="%d"(?:(?!</%s>).)*?</%s>'
+            % (tag, tag, shape_id, tag, tag),
+            re.DOTALL,
+        )
+        new_xml, n = pattern.subn('', slide_xml, count=1)
+        if n:
+            return new_xml
+    return slide_xml
 
 
 def get_picture_frame_emu(slide_xml: str, rid: str) -> tuple[int, int] | None:
