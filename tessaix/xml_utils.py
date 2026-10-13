@@ -200,6 +200,7 @@ def replace_text_and_fit(
     slide_xml: str, old: str, new: str, role: str = "body",
     base_scale: float = 1.0, min_font_pt: float | None = None,
     preset_height_pt: float | None = None, grow_ceiling_pt: float | None = None,
+    max_usable_height_pt: float | None = None,
 ) -> str:
     """
     Igual que `replace_text_in_xml`, pero además comprueba si el texto
@@ -248,6 +249,15 @@ def replace_text_and_fit(
     sin este tope, el texto podría crecer más allá del borde visible de esa
     tarjeta. Con el tope puesto, si el texto no cabe ni creciendo hasta ahí,
     se prioriza encogerlo más (paso 3) antes que salirse de la tarjeta.
+
+    `max_usable_height_pt` limita el alto que se considera "disponible"
+    para el texto, aunque la caja declarada en la plantilla sea más alta.
+    Hace falta cuando una decoración (p.ej. uno de los círculos
+    traslúcidos de fondo) se solapa con la parte baja de la caja de
+    fábrica: si el texto ocupara toda la caja, su parte final quedaría
+    tapada por esa decoración aunque la caja NUNCA haya crecido. Con este
+    tope, el texto se encoge antes de llegar a esa zona en vez de
+    confirmarlo visualmente solo cuando ya se ha generado el contenido.
     """
     min_scale = _TITLE_MIN_SCALE if role == "title" else None
 
@@ -274,6 +284,8 @@ def replace_text_and_fit(
         if usable_area is None:
             return replaced
         usable_w_pt, usable_h_pt = usable_area
+        if max_usable_height_pt is not None:
+            usable_h_pt = min(usable_h_pt, max_usable_height_pt)
 
         paragraphs = [
             info for para in _PARAGRAPH_RE.findall(replaced)
@@ -321,6 +333,67 @@ def replace_text_and_fit(
         replaced = _grow_shape_height(replaced, text_fit.pt_to_emu(max_box_h_pt))
         return replaced
 
+    return _SHAPE_RE.sub(process_shape, slide_xml)
+
+
+def _set_open_tag_attr(attrs: str, name: str, value: str) -> str:
+    if re.search(rf'\b{name}="[^"]*"', attrs):
+        return re.sub(rf'\b{name}="[^"]*"', f'{name}="{value}"', attrs)
+    return f' {name}="{value}"' + attrs
+
+
+def _shape_contains_text(shape_xml: str, marker_text: str) -> bool:
+    """
+    Comprueba si `marker_text` aparece en el texto VISIBLE de la forma —
+    no en su XML en crudo. El texto puede estar repartido en varios
+    <a:r> (p.ej. por una palabra en negrita a mitad de frase), así que un
+    simple ``marker_text in shape_xml`` falla justo en esos casos; hay que
+    consolidar los <a:t> de cada párrafo antes de comparar, igual que hace
+    `replace_text_in_xml`.
+    """
+    for para in re.findall(r'<a:p\b[^>]*>.*?</a:p>', shape_xml, re.DOTALL):
+        runs_text = ''.join(re.findall(_A_T_OPEN + r'(.*?)</a:t>', para, re.DOTALL))
+        if marker_text in runs_text:
+            return True
+    return False
+
+
+def center_paragraph_align(slide_xml: str, marker_text: str) -> str:
+    """
+    Centra horizontalmente (``algn="ctr"``) todos los párrafos de la forma
+    que contiene `marker_text`, sin tocar nada más de su contenido. Útil
+    para diapositivas clonadas que heredan la alineación a la izquierda
+    del donante original.
+    """
+    def process_shape(m):
+        shape_xml = m.group(0)
+        if not _shape_contains_text(shape_xml, marker_text):
+            return shape_xml
+        return re.sub(
+            r'<a:pPr\b([^>]*)>',
+            lambda pm: f'<a:pPr{_set_open_tag_attr(pm.group(1), "algn", "ctr")}>',
+            shape_xml,
+        )
+    return _SHAPE_RE.sub(process_shape, slide_xml)
+
+
+def center_vertical_anchor(slide_xml: str, marker_text: str) -> str:
+    """
+    Centra verticalmente (``anchor="ctr"`` en `bodyPr`) el contenido de la
+    forma que contiene `marker_text` dentro de su caja — útil cuando esa
+    caja es mucho más alta que el texto que contiene (p.ej. tras un
+    `preset_height_pt` generoso) y, si no, el texto queda todo pegado
+    arriba dejando un hueco vacío grande debajo.
+    """
+    def process_shape(m):
+        shape_xml = m.group(0)
+        if not _shape_contains_text(shape_xml, marker_text):
+            return shape_xml
+        return re.sub(
+            r'<a:bodyPr\b([^>]*)>',
+            lambda pm: f'<a:bodyPr{_set_open_tag_attr(pm.group(1), "anchor", "ctr")}>',
+            shape_xml, count=1,
+        )
     return _SHAPE_RE.sub(process_shape, slide_xml)
 
 
