@@ -35,7 +35,6 @@ from .xml_utils import (
     center_paragraph_align,
     center_vertical_anchor,
     enable_shrink_autofit,
-    get_shape_ext_emu,
     remove_content_type_override,
     remove_relationship,
     remove_shape_by_id,
@@ -43,7 +42,6 @@ from .xml_utils import (
     replace_text_and_fit,
     replace_text_in_xml,
     resolve_rid_for_target,
-    shift_shape_y,
 )
 
 # ─── SLIDES DE CADA PLANTILLA (numeración fija, 1-indexada) ───────────────
@@ -85,17 +83,18 @@ _FEE_OLD = "13%"
 # distintos). Se clona dos veces, se le quitan las tarjetas propias de esa
 # diapositiva (quedan solo el título y el subtítulo, reutilizado como
 # cuerpo) y se reescribe el contenido.
+_PQT_PRUNE_IDS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 _HC_DONOR = {
     "slide": "slide5.xml",
-    "prune_ids": [286, 287, 289, 290, 292, 293, 4, 16, 7, 15, 19, 13, 14, 17, 18, 20, 21, 5, 6],
-    "eyebrow_old": "NUESTRA FUERZA",
-    "title_old": "Expertos en el flujo de talento",
+    "prune_ids": _PQT_PRUNE_IDS,
+    "eyebrow_old": "POR QUÉ TESSERA",
+    "title_old": "Por qué Tessera",
     "body_old": "Procesos claros y compromisos que se cumplen: así movemos el talento.",
 }
 _HCF_DONOR = {
     "slide": "slide9.xml",
-    "prune_ids": [185, 173, 174, 175, 176, 177, 183, 184, 186, 187, 188, 190, 191, 192, 193, 194, 195, 196, 197],
-    "eyebrow_old": "NOSOTROS",
+    "prune_ids": _PQT_PRUNE_IDS,
+    "eyebrow_old": "POR QUÉ TESSERA",
     "title_old": "Por qué Tessera",
     "body_old": "Control, rigor financiero y talento al servicio de la tesis de inversión.",
 }
@@ -114,21 +113,13 @@ _CLONE_BODY_BASE_SCALE = 1.3
 _CLONE_BODY_MIN_FONT_PT = 14.0
 _CLONE_BODY_PRESET_HEIGHT_PT = 330.0
 
-# Las tres tarjetas de cada columna de servicio (p.ej. headhunting) tienen
-# un rectángulo redondeado de FONDO con tamaño fijo detrás del cuadro de
-# texto: si el texto generado por IA crece más de la cuenta, puede crecer
-# más allá del borde visible de esa tarjeta. Además, dos de las tres
-# columnas tienen un círculo decorativo traslúcido que ya se solapa por
-# diseño con la parte BAJA de esa tarjeta (pensado para asomar detrás de
-# texto corto); si el texto generado llega a esa zona, el círculo lo tapa
-# visualmente ("se corta"). Por eso el tope de cada columna no es solo el
-# borde de la tarjeta, sino el punto donde empieza su círculo decorativo
-# (con un margen de seguridad) cuando lo hay.
-_HEADHUNTING_CARD_SAFE_HEIGHT_PT = {
-    "left": 180.0,    # tarjeta "¿POR QUÉ ELEGIRNOS?": el círculo empieza en y≈325pt
-    "middle": 203.0,  # tarjeta "BENEFICIOS PARA TI": sin círculo encima, solo el borde
-    "right": 160.0,   # tarjeta "¿CÓMO LO HACEMOS?": el círculo empieza en y≈310pt
-}
+# Cada tarjeta plana (fondo Bruma, sin degradados ni círculos detrás —
+# diseño 2026) es un único cuadro de texto con el título y el cuerpo de
+# sus 3 filas como párrafos seguidos. Si el contenido generado por IA es
+# más largo de lo habitual, no debe crecer más allá del propio rectángulo
+# de fondo de la tarjeta: estos topes son el alto seguro de cada una.
+_HEADHUNTING_CARD_SAFE_HEIGHT_PT = 210.0
+_PQT_CARD_SAFE_HEIGHT_PT = 145.0
 
 
 def _read(path: Path) -> str:
@@ -272,43 +263,54 @@ def _renumber_visible_pages(pptx_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
-# Acento decorativo PROPIO para Índice/Contexto: un círculo con degradado
-# suave en el teal de marca que se apaga hacia fuera, en la esquina
-# inferior derecha. Se construye desde cero en vez de reutilizar el
-# gráfico de la diapositiva donante — ese gráfico trae de fábrica una
-# relación a notas del orador que, al clonarse, deja el .pptx corrupto
-# (ver _duplicate_slide), así que para un simple adorno no merece la pena
-# arrastrar ese riesgo de nuevo.
+# Acento decorativo PROPIO para Índice/Contexto: el recurso "Loop" del
+# manual de marca (una línea fina con degradado de 2 colores), no el
+# gráfico de onda de la plantilla donante — ese gráfico trae de fábrica
+# una relación a notas del orador que, al clonarse, deja el .pptx
+# corrupto (ver _duplicate_slide), así que para un simple adorno no
+# merece la pena arrastrar ese riesgo. Una barra ancha y plana con
+# degradado Teal→Navy, bajo el título, coherente con el resto de la
+# plantilla (misma línea que corona cada tarjeta y cada ficha de equipo).
 _ACCENT_SHAPE_ID = 9001
-_ACCENT_DIAMETER_PT = 260.0
-_ACCENT_CENTER_X_PT = 900.0
-_ACCENT_CENTER_Y_PT = 520.0
+_ACCENT_X_PT = 60.0
+_ACCENT_Y_PT = 160.0
+_ACCENT_WIDTH_PT = 60.0
+_ACCENT_HEIGHT_PT = 3.0
 
 
 def _corner_accent_xml() -> str:
-    d_emu = round(_ACCENT_DIAMETER_PT * 12700)
-    x_emu = round((_ACCENT_CENTER_X_PT - _ACCENT_DIAMETER_PT / 2) * 12700)
-    y_emu = round((_ACCENT_CENTER_Y_PT - _ACCENT_DIAMETER_PT / 2) * 12700)
+    x_emu = round(_ACCENT_X_PT * 12700)
+    y_emu = round(_ACCENT_Y_PT * 12700)
+    w_emu = round(_ACCENT_WIDTH_PT * 12700)
+    h_emu = round(_ACCENT_HEIGHT_PT * 12700)
     return (
         f'<p:sp><p:nvSpPr><p:cNvPr id="{_ACCENT_SHAPE_ID}" name="Acento decorativo"/>'
         f'<p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>'
-        f'<a:xfrm><a:off x="{x_emu}" y="{y_emu}"/><a:ext cx="{d_emu}" cy="{d_emu}"/></a:xfrm>'
-        f'<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>'
+        f'<a:xfrm><a:off x="{x_emu}" y="{y_emu}"/><a:ext cx="{w_emu}" cy="{h_emu}"/></a:xfrm>'
+        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
         f'<a:gradFill><a:gsLst>'
-        f'<a:gs pos="0"><a:srgbClr val="587579"><a:alpha val="35000"/></a:srgbClr></a:gs>'
-        f'<a:gs pos="100000"><a:srgbClr val="587579"><a:alpha val="0"/></a:srgbClr></a:gs>'
-        f'</a:gsLst><a:path path="circle">'
-        f'<a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path></a:gradFill>'
+        f'<a:gs pos="0"><a:srgbClr val="587579"/></a:gs>'
+        f'<a:gs pos="100000"><a:srgbClr val="202031"/></a:gs>'
+        f'</a:gsLst></a:gradFill>'
         f'<a:ln><a:noFill/></a:ln>'
         f'</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>'
     )
 
 
 def _add_corner_accent(slide_xml: str) -> str:
-    """Inserta el acento justo tras los dos hijos obligatorios de
+    """
+    Inserta el acento justo tras los dos hijos obligatorios de
     `<p:spTree>` (nvGrpSpPr, grpSpPr), para que quede en la capa más baja
-    — detrás de todo el texto y las demás formas."""
-    return slide_xml.replace("</p:grpSpPr>", "</p:grpSpPr>" + _corner_accent_xml(), 1)
+    — detrás de todo el texto y las demás formas.
+
+    `<p:grpSpPr>` puede venir como `</p:grpSpPr>` (con hijos, p.ej. un
+    <a:xfrm>) o autocerrado `<p:grpSpPr/>` (sin hijos, que es lo que
+    escribe python-pptx cuando no se fija la posición del grupo) — hay que
+    cubrir los dos casos o la inserción no encuentra nada que reemplazar.
+    """
+    if "</p:grpSpPr>" in slide_xml:
+        return slide_xml.replace("</p:grpSpPr>", "</p:grpSpPr>" + _corner_accent_xml(), 1)
+    return slide_xml.replace("<p:grpSpPr/>", "<p:grpSpPr/>" + _corner_accent_xml(), 1)
 
 
 # ─── ÍNDICE Y CONTEXTO (compartido) ────────────────────────────────────
@@ -360,35 +362,6 @@ def _index_items(data: dict) -> list[str]:
             items.append("Honorarios")
         items.append("Confían en nosotros")
     return items
-
-
-_TITLE_PUSH_EXTRA_GAP_PT = 14.0
-
-
-def _replace_title_and_push(s: str, old_title: str, new_title: str, title_id: int, body_id: int) -> str:
-    """
-    Sustituye un título (role="title") y, si al no caber tuvo que crecer
-    verticalmente, desplaza hacia abajo el cuerpo que tiene justo debajo
-    — si no, un título de dos líneas (p.ej. "Acompañamiento real y
-    cercano") invade el cuerpo de texto de abajo, que no se entera de que
-    el título por encima ha cambiado de tamaño.
-
-    El desplazamiento es el crecimiento MÁS un margen extra fijo, no solo
-    el crecimiento a secas: en la plantilla original el cuerpo ya empieza
-    unos puntos antes de donde termina la caja del título (sin que se
-    note, porque con una sola línea el texto nunca llega tan abajo). Ese
-    margen "gratis" desaparece justo cuando el título SÍ necesita crecer
-    — o sea, justo cuando el texto empieza a llegar al borde de su caja —
-    así que hay que añadir un hueco a mayores para que quede una
-    separación visible de verdad.
-    """
-    before = get_shape_ext_emu(s, title_id)
-    s = replace_text_and_fit(s, old_title, new_title, role="title")
-    after = get_shape_ext_emu(s, title_id)
-    if before and after and after[1] > before[1]:
-        grown_emu = after[1] - before[1]
-        s = shift_shape_y(s, body_id, grown_emu + round(_TITLE_PUSH_EXTRA_GAP_PT * 12700))
-    return s
 
 
 def _build_index_and_context(data: dict, unpack: Path, donor: dict) -> None:
@@ -462,46 +435,43 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
     services = data.get("services", [])
 
     # ── Por qué Tessera ─────────────────────────────────────────────
-    # El título y el cuerpo de cada columna son dos cajas INDEPENDIENTES:
-    # si el título generado es largo y pasa a dos líneas, su caja crece
-    # hacia abajo e invade el cuerpo de debajo si nadie lo desplaza
-    # también — de ahí el uso de _replace_title_and_push en vez de un
-    # simple replace_text_and_fit para los títulos.
+    # Cada tarjeta es AHORA un único cuadro de texto (título + cuerpo como
+    # dos párrafos seguidos), no dos formas independientes — si el título
+    # ocupa más líneas, el cuerpo fluye detrás dentro del mismo cuadro sin
+    # que nadie tenga que desplazarlo a mano. Se topa el crecimiento al
+    # alto seguro de la tarjeta para que no se salga de su fondo plano.
+    pqt = _PQT_CARD_SAFE_HEIGHT_PT
     if why:
         s = _read(slides / "slide5.xml")
-        if why.get("d1_title"): s = _replace_title_and_push(s, "Sin CVs al azar", why["d1_title"], 286, 287)
-        if why.get("d1_body"):  s = r(s, "No enviamos el primer CV, buscamos a quien encaja de verdad. Candidatos filtrados sobre la mesa en 72 horas.", why["d1_body"])
-        if why.get("d2_title"): s = _replace_title_and_push(s, "Sin pausas", why["d2_title"], 289, 290)
-        if why.get("d2_body"):  s = r(s, "Tu servicio no parará.", why["d2_body"])
-        if why.get("d3_title"): s = _replace_title_and_push(s, "Siempre contigo", why["d3_title"], 292, 293)
-        if why.get("d3_body"):  s = r(s, "No desaparecemos tras la incorporación: cuidamos a la persona y al cliente.", why["d3_body"])
+        if why.get("d1_title"): s = r(s, "Sin CVs al azar", why["d1_title"], grow_ceiling_pt=pqt)
+        if why.get("d1_body"):  s = r(s, "No enviamos el primer CV, buscamos a quien encaja de verdad. Candidatos filtrados sobre la mesa en 72 horas.", why["d1_body"], grow_ceiling_pt=pqt)
+        if why.get("d2_title"): s = r(s, "Sin pausas", why["d2_title"], grow_ceiling_pt=pqt)
+        if why.get("d2_body"):  s = r(s, "Tu servicio no parará.", why["d2_body"], grow_ceiling_pt=pqt)
+        if why.get("d3_title"): s = r(s, "Siempre contigo", why["d3_title"], grow_ceiling_pt=pqt)
+        if why.get("d3_body"):  s = r(s, "No desaparecemos tras la incorporación: cuidamos a la persona y al cliente.", why["d3_body"], grow_ceiling_pt=pqt)
         _write(slides / "slide5.xml", s)
 
     # ── Headhunting ──────────────────────────────────────────────────
-    # Las 3 columnas son tarjetas con un rectángulo redondeado de fondo de
-    # tamaño FIJO, y dos de ellas tienen además un círculo decorativo que
-    # ya se solapa con su parte baja por diseño — así que el límite de
-    # cada columna no es solo "no crezcas" (grow_ceiling_pt) sino también
-    # "no ocupes toda tu propia caja" (max_usable_height_pt), para que el
-    # texto se encoja antes de llegar a la zona del círculo.
+    # Las 3 columnas son tarjetas planas (fondo Bruma, sin degradados ni
+    # círculos detrás) de tamaño fijo, cada una un único cuadro de texto
+    # con sus 3 filas de título+cuerpo seguidas — se topa el crecimiento
+    # al alto seguro de la tarjeta para que nunca se salga de su fondo.
     if "headhunting" in services and svcs.get("headhunting"):
         hh = svcs["headhunting"]
-        left = _HEADHUNTING_CARD_SAFE_HEIGHT_PT["left"]
-        mid = _HEADHUNTING_CARD_SAFE_HEIGHT_PT["middle"]
-        right = _HEADHUNTING_CARD_SAFE_HEIGHT_PT["right"]
+        hc = _HEADHUNTING_CARD_SAFE_HEIGHT_PT
         s = _read(slides / "slide6.xml")
-        if hh.get("why_col_title1"): s = r(s, "VELOCIDAD", hh["why_col_title1"], grow_ceiling_pt=left, max_usable_height_pt=left)
-        if hh.get("why_col_body1"):  s = r(s, "Disponemos de nuestra propia metodología, la cual nos permite presentar candidatos a tiempo.", hh["why_col_body1"], grow_ceiling_pt=left, max_usable_height_pt=left)
-        if hh.get("why_col_title2"): s = r(s, "ESPECIALIZACIÓN", hh["why_col_title2"], grow_ceiling_pt=left, max_usable_height_pt=left)
-        if hh.get("why_col_body2"):  s = r(s, "Conocemos tu sector y cómo se construyen sus equipos.", hh["why_col_body2"], grow_ceiling_pt=left, max_usable_height_pt=left)
-        if hh.get("why_col_title3"): s = r(s, "ÉXITO COMPARTIDO", hh["why_col_title3"], grow_ceiling_pt=left, max_usable_height_pt=left)
-        if hh.get("why_col_body3"):  s = r(s, "El equipo que lleva tu negocio al siguiente nivel.", hh["why_col_body3"], grow_ceiling_pt=left, max_usable_height_pt=left)
-        if hh.get("benefits_body1"): s = r(s, "Nos ocupamos de todo. Tú solo conoces a los mejores.", hh["benefits_body1"], grow_ceiling_pt=mid, max_usable_height_pt=mid)
-        if hh.get("benefits_body2"): s = r(s, "Candidatos que no solo encajan: impulsan tu crecimiento.", hh["benefits_body2"], grow_ceiling_pt=mid, max_usable_height_pt=mid)
-        if hh.get("benefits_body3"): s = r(s, "Tu éxito es también el nuestro.", hh["benefits_body3"], grow_ceiling_pt=mid, max_usable_height_pt=mid)
-        if hh.get("how_body3"): s = r(s, "Habilidades, actitud y encaje cultural.", hh["how_body3"], grow_ceiling_pt=right, max_usable_height_pt=right)
-        if hh.get("how_body4"): s = r(s, "Únicamente candidatos que realmente suman.", hh["how_body4"], grow_ceiling_pt=right, max_usable_height_pt=right)
-        if hh.get("how_body5"): s = r(s, "Contigo también después de la incorporación.", hh["how_body5"], grow_ceiling_pt=right, max_usable_height_pt=right)
+        if hh.get("why_col_title1"): s = r(s, "VELOCIDAD", hh["why_col_title1"], grow_ceiling_pt=hc)
+        if hh.get("why_col_body1"):  s = r(s, "Disponemos de nuestra propia metodología, la cual nos permite presentar candidatos a tiempo.", hh["why_col_body1"], grow_ceiling_pt=hc)
+        if hh.get("why_col_title2"): s = r(s, "ESPECIALIZACIÓN", hh["why_col_title2"], grow_ceiling_pt=hc)
+        if hh.get("why_col_body2"):  s = r(s, "Conocemos tu sector y cómo se construyen sus equipos.", hh["why_col_body2"], grow_ceiling_pt=hc)
+        if hh.get("why_col_title3"): s = r(s, "ÉXITO COMPARTIDO", hh["why_col_title3"], grow_ceiling_pt=hc)
+        if hh.get("why_col_body3"):  s = r(s, "El equipo que lleva tu negocio al siguiente nivel.", hh["why_col_body3"], grow_ceiling_pt=hc)
+        if hh.get("benefits_body1"): s = r(s, "Nos ocupamos de todo. Tú solo conoces a los mejores.", hh["benefits_body1"], grow_ceiling_pt=hc)
+        if hh.get("benefits_body2"): s = r(s, "Candidatos que no solo encajan: impulsan tu crecimiento.", hh["benefits_body2"], grow_ceiling_pt=hc)
+        if hh.get("benefits_body3"): s = r(s, "Tu éxito es también el nuestro.", hh["benefits_body3"], grow_ceiling_pt=hc)
+        if hh.get("how_body3"): s = r(s, "Habilidades, actitud y encaje cultural.", hh["how_body3"], grow_ceiling_pt=hc)
+        if hh.get("how_body4"): s = r(s, "Únicamente candidatos que realmente suman.", hh["how_body4"], grow_ceiling_pt=hc)
+        if hh.get("how_body5"): s = r(s, "Contigo también después de la incorporación.", hh["how_body5"], grow_ceiling_pt=hc)
         _write(slides / "slide6.xml", s)
 
     # ── Outsourcing ──────────────────────────────────────────────────

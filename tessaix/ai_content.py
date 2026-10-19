@@ -105,7 +105,8 @@ SYSTEM_ES = """Eres consultor comercial senior de Tessera Human Capital (tessera
 Generas contenido para propuestas comerciales en PowerPoint. Devuelves ÚNICAMENTE JSON válido.
 REGLAS ABSOLUTAS:
 {name_rule}
-- Sin guiones largos
+- Sin guiones largos ni punto medio (·) como separador; si hace falta separar dos
+  elementos cortos, usa un guion corto "-" (p.ej. "Madrid - Bilbao", no "Madrid · Bilbao")
 - Nunca uses "contexto" ni "criterio"
 - Español de España natural, directo, tono de negocio cercano, tono neutral de España
 - Comprueba que no existan faltas de ortografía antes de responder
@@ -120,7 +121,8 @@ REGLAS ABSOLUTAS:
 SYSTEM_EN = """Senior commercial consultant at Tessera Human Capital. Return ONLY valid JSON.
 ABSOLUTE RULES:
 {name_rule}
-- No em dashes, sector-specific content only, complete standalone texts.
+- No em dashes and no middle dot (·) as a separator; use a short hyphen "-" instead
+  (e.g. "Madrid - Bilbao", not "Madrid · Bilbao"). Sector-specific content only, complete standalone texts.
 Neutral, professional business tone. Check there are no spelling or grammar mistakes
 before answering. Use plain, everyday words — never obscure or overly formal vocabulary
 (for example, never say "utilize"; say "use" instead).
@@ -239,6 +241,7 @@ def generate_context_paragraph(data: dict) -> str | None:
             "Return ONLY the paragraph's plain text — no quotes, no JSON, no markdown, "
             "no title.\n" + _name_rule_en(cn) + "\n"
             "Neutral, professional tone, no spelling mistakes, plain everyday words.\n"
+            "No em dashes and no middle dot (·) as a separator; use a short hyphen \"-\" instead.\n"
             "3-5 sentences, one single paragraph, no bullet points.\n"
             "You have a web_search tool: use it to look up real, public information about "
             "the client company (what it does, its size, recent relevant activity) so the "
@@ -262,6 +265,7 @@ def generate_context_paragraph(data: dict) -> str | None:
             "markdown, sin título.\n" + _name_rule_es(cn) + "\n"
             "Español de España natural, tono neutral y profesional, sin faltas de "
             "ortografía, palabras corrientes (nunca 'embebido' ni vocabulario rebuscado).\n"
+            "Sin guiones largos ni punto medio (·) como separador; usa un guion corto \"-\" si hace falta.\n"
             "3-5 frases, un único párrafo, sin viñetas.\n"
             "Tienes una herramienta web_search: úsala para buscar información pública real "
             "sobre la empresa cliente (a qué se dedica, su tamaño, actividad reciente "
