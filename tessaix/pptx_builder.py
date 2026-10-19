@@ -32,7 +32,6 @@ from .ai_content import generate_context_paragraph
 from .config import BUSINESS_LINE_HC_FINANCE, PLANTILLA_HC, PLANTILLA_HC_FINANCE, SERVICES_HC
 from .team import LOCATIONS_MADRID_ONLY
 from .xml_utils import (
-    center_paragraph_align,
     center_vertical_anchor,
     enable_shrink_autofit,
     remove_content_type_override,
@@ -263,56 +262,6 @@ def _renumber_visible_pages(pptx_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
-# Acento decorativo PROPIO para Índice/Contexto: el recurso "Loop" del
-# manual de marca (una línea fina con degradado de 2 colores), no el
-# gráfico de onda de la plantilla donante — ese gráfico trae de fábrica
-# una relación a notas del orador que, al clonarse, deja el .pptx
-# corrupto (ver _duplicate_slide), así que para un simple adorno no
-# merece la pena arrastrar ese riesgo. Una barra ancha y plana con
-# degradado Teal→Navy, bajo el título, coherente con el resto de la
-# plantilla (misma línea que corona cada tarjeta y cada ficha de equipo).
-_ACCENT_SHAPE_ID = 9001
-_ACCENT_X_PT = 60.0
-_ACCENT_Y_PT = 160.0
-_ACCENT_WIDTH_PT = 60.0
-_ACCENT_HEIGHT_PT = 3.0
-
-
-def _corner_accent_xml() -> str:
-    x_emu = round(_ACCENT_X_PT * 12700)
-    y_emu = round(_ACCENT_Y_PT * 12700)
-    w_emu = round(_ACCENT_WIDTH_PT * 12700)
-    h_emu = round(_ACCENT_HEIGHT_PT * 12700)
-    return (
-        f'<p:sp><p:nvSpPr><p:cNvPr id="{_ACCENT_SHAPE_ID}" name="Acento decorativo"/>'
-        f'<p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>'
-        f'<a:xfrm><a:off x="{x_emu}" y="{y_emu}"/><a:ext cx="{w_emu}" cy="{h_emu}"/></a:xfrm>'
-        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
-        f'<a:gradFill><a:gsLst>'
-        f'<a:gs pos="0"><a:srgbClr val="587579"/></a:gs>'
-        f'<a:gs pos="100000"><a:srgbClr val="202031"/></a:gs>'
-        f'</a:gsLst></a:gradFill>'
-        f'<a:ln><a:noFill/></a:ln>'
-        f'</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>'
-    )
-
-
-def _add_corner_accent(slide_xml: str) -> str:
-    """
-    Inserta el acento justo tras los dos hijos obligatorios de
-    `<p:spTree>` (nvGrpSpPr, grpSpPr), para que quede en la capa más baja
-    — detrás de todo el texto y las demás formas.
-
-    `<p:grpSpPr>` puede venir como `</p:grpSpPr>` (con hijos, p.ej. un
-    <a:xfrm>) o autocerrado `<p:grpSpPr/>` (sin hijos, que es lo que
-    escribe python-pptx cuando no se fija la posición del grupo) — hay que
-    cubrir los dos casos o la inserción no encuentra nada que reemplazar.
-    """
-    if "</p:grpSpPr>" in slide_xml:
-        return slide_xml.replace("</p:grpSpPr>", "</p:grpSpPr>" + _corner_accent_xml(), 1)
-    return slide_xml.replace("<p:grpSpPr/>", "<p:grpSpPr/>" + _corner_accent_xml(), 1)
-
-
 # ─── ÍNDICE Y CONTEXTO (compartido) ────────────────────────────────────
 def _build_info_slide(
     unpack: Path, donor: dict, new_slide_file: str, insert_after_file: str,
@@ -326,20 +275,16 @@ def _build_info_slide(
     for shape_id in donor["prune_ids"]:
         s = remove_shape_by_id(s, shape_id)
     s = replace_text_in_xml(s, donor["eyebrow_old"], eyebrow)
-    # Centrar ANTES de sustituir el texto: así se busca el marcador del
-    # donante (fijo, sin caracteres especiales) en vez del texto nuevo
-    # (que podría llevar un "&" u otro carácter que ya sale escapado en el
-    # XML y no haría match con la búsqueda literal).
-    s = center_paragraph_align(s, donor["title_old"])
     s = replace_text_and_fit(s, donor["title_old"], title, role="title")
-    s = center_paragraph_align(s, donor["body_old"])
+    # Alineado a la izquierda (igual que el resto de títulos/cuerpos de la
+    # plantilla) — solo se centra verticalmente el cuerpo dentro de su
+    # caja, que es mucho más alta que el texto corto del donante.
     s = center_vertical_anchor(s, donor["body_old"])
     s = replace_text_and_fit(
         s, donor["body_old"], body,
         base_scale=body_base_scale, min_font_pt=body_min_font_pt, preset_height_pt=body_preset_height_pt,
     )
     s = enable_shrink_autofit(s)
-    s = _add_corner_accent(s)
     _write(path, s)
 
 
