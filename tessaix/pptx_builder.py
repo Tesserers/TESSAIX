@@ -1,12 +1,23 @@
 """Ensamblado del .pptx a partir de las plantillas de Tessera.
 
-Hay dos plantillas maestras, una por línea de negocio (ver config.py):
-`PLANTILLA_HC` (Human Capital solo) y `PLANTILLA_HC_FINANCE` (Human Capital
-+ Finance). Cada una es un SUPERCONJUNTO: trae ya dentro los bloques
-opcionales (equipo con/sin Eduardo Serrano, sedes Madrid-sola o las 3,
-términos y condiciones + honorarios) como diapositivas o formas completas,
-y este módulo decide en tiempo de generación cuáles conservar y cuáles
-quitar, en vez de tener que maquetar nada desde cero.
+Las dos plantillas maestras (ver config.py: `PLANTILLA_HC` y
+`PLANTILLA_HC_FINANCE`) son, literalmente, los archivos reales de la
+identidad 2026 que dio el equipo (ver scripts/build_templates/rebuild_v3.py)
+— no una reconstrucción a mano. `PLANTILLA_HC` sale de "nueva versi con fee
+parter" (equipo + fee "Modalidad Partner"); `PLANTILLA_HC_FINANCE` de
+"Catalogo_Servicios_Tessera_Ejecutivo". Esto importa porque el texto de
+cada diapositiva de servicio YA ES el texto final de marca — los
+marcadores "antiguos" que este módulo busca y sustituye son, literalmente,
+el texto tal cual aparece en esos archivos, no una paráfrasis.
+
+Cada plantilla es un SUPERCONJUNTO: trae ya dentro los bloques opcionales
+(equipo con/sin Eduardo Serrano, términos y condiciones + honorarios)
+como diapositivas completas, y este módulo decide en tiempo de generación
+cuáles conservar y cuáles quitar, en vez de tener que maquetar nada desde
+cero. La única alternativa que NO viene de fábrica en ningún archivo real
+es "solo Madrid" para plantilla_hc.pptx — se clonó la diapositiva real de
+sedes y se le quitaron Bilbao/Oviedo (ver rebuild_v3.py); Human Capital +
+Finance no tiene esa alternativa (decisión del equipo).
 
 Las diapositivas de "Índice" y "Contexto" son la excepción: no vienen en
 la plantilla, así que se CLONAN a partir de una diapositiva ya existente
@@ -37,6 +48,7 @@ from .xml_utils import (
     enable_shrink_autofit,
     find_pic_embed_rid,
     get_picture_frame_emu,
+    get_shape_ext_emu,
     remove_content_type_override,
     remove_relationship,
     remove_shape_by_id,
@@ -45,75 +57,89 @@ from .xml_utils import (
     replace_text_in_xml,
     resolve_rel_target,
     resolve_rid_for_target,
+    shift_shape_y,
 )
 
 # ─── SLIDES DE CADA PLANTILLA (numeración fija, 1-indexada) ───────────────
 # plantilla_hc.pptx (18 diapositivas antes de añadir Índice/Contexto):
-#  1 portada · 2 equipo con Eduardo Serrano (sin fee) / 2b equipo sin él
-#  (con fee) — alternativa según deck_type, no hay nada que elegir a mano
-#  · 3 sedes (3 ciudades) · 4 sedes (solo Madrid) · 5 por qué Tessera
-#  · 5b "No somos un proveedor de CVs" (comparativa, SIEMPRE se conserva,
-#  en los dos modelos de fee) · 6 headhunting · 7 outsourcing · 8 salarial
-#  · 9 formación · 10 Tessera Services (estático) · 10b Próximos pasos
-#  (solo con fee) · 11-12 términos y condiciones (solo con fee) · 13
-#  honorarios — Modalidad Partner (solo con fee) · 14 confían en nosotros
-#  · 15 cierre
-HC_SLIDES_DYNAMIC_TEXT = ["slide5.xml", "slide6.xml", "slide7.xml", "slide8.xml", "slide9.xml"]
-HC_LOCATION_SLIDES = {"all": "slide3.xml", "madrid": "slide4.xml"}
-HC_TEAM_SLIDES = {"con_eduardo": "slide2.xml", "sin_eduardo": "slide2b.xml"}
-HC_NEXT_STEPS_SLIDE = "slide10b.xml"
-HC_TERMS_SLIDES = ["slide11.xml", "slide12.xml"]
-HC_FEE_SLIDE = "slide13.xml"
-HC_SERVICE_SLIDES = {"headhunting": "slide6.xml", "outsourcing": "slide7.xml",
-                      "salary": "slide8.xml", "formacion": "slide9.xml"}
+#  1 portada · 2 equipo SIN Eduardo Serrano (con fee) / 3 equipo CON él
+#  (sin fee) — alternativa según deck_type, no hay nada que elegir a mano
+#  · 4 sedes (3 ciudades) · 4b sedes (solo Madrid, clonada — no viene de
+#  fábrica) · 5 "Así vamos a trabajar juntos" (por qué Tessera, igual en
+#  los dos modelos de fee) · 6 "No somos un proveedor de CVs" (comparativa,
+#  SIEMPRE se conserva) · 7 headhunting · 8 outsourcing · 9 salarial
+#  · 10 formación · 11 Tessera Services (estático) · 12 Próximos pasos
+#  (solo con fee) · 13-14 términos y condiciones (solo con fee) · 15
+#  honorarios — Modalidad Partner (solo con fee) · 16 confían en nosotros
+#  · 17 cierre
+HC_SLIDES_DYNAMIC_TEXT = ["slide5.xml", "slide7.xml", "slide8.xml", "slide9.xml", "slide10.xml"]
+HC_LOCATION_SLIDES = {"all": "slide4.xml", "madrid": "slide4b.xml"}
+HC_TEAM_SLIDES = {"sin_eduardo": "slide2.xml", "con_eduardo": "slide3.xml"}
+HC_NEXT_STEPS_SLIDE = "slide12.xml"
+HC_TERMS_SLIDES = ["slide13.xml", "slide14.xml"]
+HC_FEE_SLIDE = "slide15.xml"
+HC_SERVICE_SLIDES = {"headhunting": "slide7.xml", "outsourcing": "slide8.xml",
+                      "salary": "slide9.xml", "formacion": "slide10.xml"}
 
-# plantilla_hc_finance.pptx (12 diapositivas antes de añadir Índice/Contexto):
-#  1 portada · 2/3 "Tessera en una página" (3 sedes / solo Madrid, se
-#  conserva una y se borra la otra) · 4/5 equipo (sin/con Eduardo Serrano,
-#  igual: se conserva una) · 6 para el fondo · 7 servicios Finance
-#  8 servicios Human Capital (resumen) · 9 por qué Tessera
-#  10 confían en nosotros · 11 contacto · 12 cierre
-# Human Capital + Finance ya no tiene ningún flujo de fee/honorarios ni de
-# términos y condiciones — esas diapositivas se quitaron de la plantilla.
-HCF_LOCATION_SLIDES = {"all": "slide2.xml", "madrid": "slide3.xml"}
-HCF_TEAM_SLIDES = {"no_eduardo": "slide4.xml", "con_eduardo": "slide5.xml"}
+# plantilla_hc_finance.pptx (11 diapositivas antes de añadir Índice/Contexto):
+#  1 portada · 2 "Tessera en una página" (una sola versión, sin alternativa
+#  de sedes — decisión del equipo) · 3/4 equipo (sin/con Eduardo Serrano,
+#  se conserva una) · 5 para el fondo · 6 servicios Finance
+#  · 7 servicios Human Capital (resumen) · 8 por qué Tessera
+#  · 9 confían en nosotros · 10 contacto · 11 cierre
+# Human Capital + Finance no tiene ningún flujo de fee/honorarios ni de
+# términos y condiciones (el archivo real nunca los trajo).
+HCF_TEAM_SLIDES = {"no_eduardo": "slide3.xml", "con_eduardo": "slide4.xml"}
 
-# Texto exacto (tal y como está en la plantilla) del bloque de garantía y
-# de la firma — solo en plantilla_hc.pptx, la única con flujo de fee.
+# Texto exacto (tal y como está en la plantilla real) del bloque de
+# garantía y de la firma — solo en plantilla_hc.pptx, la única con flujo
+# de fee.
 _WARRANTY_OLD = "dentro de los 3 meses siguientes a la fecha de contratación"
-_DATE_PLACEHOLDER = "{dd/mm/aaaa}"
-_FEE_OLD = "13%"
-# "Modalidad Partner": fee_rate% sobre un salario bruto anual (SBA) de
-# referencia, en dos plazos (1/3 a la firma, 2/3 ajustable a la
-# incorporación) — ver _modalidad_partner_detail. El texto de abajo es el
-# ejemplo de fábrica (12% sobre 36.000 €) tal y como está escrito en la
-# plantilla; se sustituye entero por los valores reales del wizard.
-_FEE_DETAIL_OLD = (
-    "12% sobre un SBA de referencia de 36.000 € (4.320 €)\n"
-    "1/3 - 1.440 € a la firma (anticipo fijo)\n"
-    "2/3 - 2.880 € ajustable, a la incorporación"
-)
+# La plantilla trae una fecha de ejemplo real (no un token) en la firma y
+# en "Firma del acuerdo de colaboración" — se sustituye por la de hoy.
+_DATE_OLD = "08/10/2026"
+# "8. VIGENCIA DE ESTE ACUERDO": un año desde la fecha de la propuesta,
+# en formato largo español ("el 8 de octubre de 2027").
+_VIGENCIA_OLD = "hasta el 8 de octubre de 2027"
+_MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+             "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+# "Modalidad Partner" (diapositiva de Honorarios): fee_rate% sobre un SBA
+# de referencia, en dos plazos (1/3 a la firma, 2/3 ajustable a la
+# incorporación). Los textos de abajo son el ejemplo de fábrica (12% sobre
+# 36.000 €) tal cual aparece en la plantilla — varias formas distintas,
+# cada una con su propio marcador exacto (ver _modalidad_partner_subs).
+_FEE_RATE_OLD = "12%"
+_FEE_ANTICIPO_OLD = "1/3     1.440 €"
+_FEE_SEGUNDO_OLD = "2/3     2.880 € ajustable"
+_FEE_CONDICIONES_OLD = "Si el SBA real es mayor o menor de 36.000 €, se regulariza en los 2/3."
+# "36.000" y "4.320" aparecen en una frase ("...de 36.000 € (4.320 €)")
+# donde el símbolo € quedó mal codificado en el archivo real (un carácter
+# de reemplazo en vez de €) — como texto, no coincide con un "€" normal.
+# En vez de intentar adivinar esa codificación exacta, se sustituyen los
+# dos números sueltos directamente por su <a:t> (ver _replace_isolated_numbers).
+_SBA_REF_NUMBER_OLD = "36.000"
+_SBA_FEE_TOTAL_NUMBER_OLD = "4.320"
 
 # ─── DONANTES PARA CLONAR "ÍNDICE" Y "CONTEXTO" ───────────────────────────
 # Cada plantilla tiene ya una diapositiva con el "cascarón" que se necesita
-# (logo, línea, texto de sección, título grande, subtítulo de una línea,
-# número de página): en plantilla_hc.pptx es "Por qué Tessera" (slide5), en
-# plantilla_hc_finance.pptx su equivalente (slide9, mismo patrón con ids
-# distintos). Se clona dos veces, se le quitan las tarjetas propias de esa
-# diapositiva (quedan solo el título y el subtítulo, reutilizado como
-# cuerpo) y se reescribe el contenido.
-_PQT_PRUNE_IDS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+# (logo, texto de sección, título grande, subtítulo, número de página): en
+# plantilla_hc.pptx es "Así vamos a trabajar juntos" (slide5), en
+# plantilla_hc_finance.pptx "Por qué Tessera" (slide8). Se clona dos veces,
+# se le quitan las tarjetas propias de esa diapositiva (queda solo el
+# título y el subtítulo, reutilizado como cuerpo) y se reescribe el
+# contenido.
 _HC_DONOR = {
     "slide": "slide5.xml",
-    "prune_ids": _PQT_PRUNE_IDS,
-    "eyebrow_old": "POR QUÉ TESSERA",
-    "title_old": "Por qué Tessera",
-    "body_old": "Procesos claros y compromisos que se cumplen: así movemos el talento.",
+    "prune_ids": [7, 9, 10, 11, 13, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 27, 28],
+    "eyebrow_old": "NUESTRA FUERZA",
+    "title_old": "Así vamos a trabajar juntos",
+    "body_old": "No somos la consultora que envía CVs y desaparece: trabajamos como parte de tu equipo.",
 }
 _HCF_DONOR = {
-    "slide": "slide9.xml",
-    "prune_ids": _PQT_PRUNE_IDS,
-    "eyebrow_old": "POR QUÉ TESSERA",
+    "slide": "slide8.xml",
+    "prune_ids": [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28],
+    "eyebrow_old": "NOSOTROS",
     "title_old": "Por qué Tessera",
     "body_old": "Control, rigor financiero y talento al servicio de la tesis de inversión.",
 }
@@ -132,13 +158,24 @@ _CLONE_BODY_BASE_SCALE = 1.3
 _CLONE_BODY_MIN_FONT_PT = 14.0
 _CLONE_BODY_PRESET_HEIGHT_PT = 330.0
 
-# Cada tarjeta plana (fondo Bruma, sin degradados ni círculos detrás —
-# diseño 2026) es un único cuadro de texto con el título y el cuerpo de
-# sus 3 filas como párrafos seguidos. Si el contenido generado por IA es
-# más largo de lo habitual, no debe crecer más allá del propio rectángulo
-# de fondo de la tarjeta: estos topes son el alto seguro de cada una.
-_HEADHUNTING_CARD_SAFE_HEIGHT_PT = 210.0
-_PQT_CARD_SAFE_HEIGHT_PT = 145.0
+# A diferencia de la plantilla anterior, aquí el título y el cuerpo de
+# cada tarjeta son DOS formas independientes apiladas (no un único cuadro
+# con dos párrafos) — así es como vienen en el archivo real.
+#
+# En Headhunting el hueco entre una forma y la siguiente es mínimo (están
+# pensadas para un título de una palabra y una frase corta): el tope de
+# crecimiento es el propio alto de fábrica, así que nunca crecen —
+# cualquier texto más largo se encoge en vez de arriesgarse a pisar la
+# forma de abajo.
+_HH_TITLE_CEILING_PT = 18.0
+_HH_BODY_CEILING_PT = 40.0
+
+# En "Así vamos a trabajar juntos" el título SÍ tiene hueco de sobra de
+# fábrica (pensado para 1-2 líneas), así que se le deja crecer un poco más
+# — pero si aun así crece, hay que desplazar el cuerpo hacia abajo lo
+# mismo que haya crecido el título, o se solapan (ver _replace_title_push).
+_WHY_TITLE_CEILING_PT = 50.0
+_WHY_BODY_CEILING_PT = 85.0
 
 
 def _read(path: Path) -> str:
@@ -375,19 +412,38 @@ def _parse_number(raw: str | None) -> float | None:
             return None
 
 
-def _modalidad_partner_detail(fee_rate: float, reference_salary: float) -> str:
+def _spanish_long_date(d: datetime.date) -> str:
+    """08/10/2026 -> '8 de octubre de 2026' (sin depender del locale del sistema)."""
+    return f"{d.day} de {_MESES_ES[d.month - 1]} de {d.year}"
+
+
+def _replace_isolated_numbers(slide_xml: str, pairs: list[tuple[str, str]]) -> str:
+    """Sustituye un número que está solo, en su propio <a:t>...</a:t>, sin
+    tocar el resto del párrafo — hace falta cuando el texto que lo rodea no
+    se puede buscar literal de forma fiable (ver _SBA_REF_NUMBER_OLD)."""
+    for old, new in pairs:
+        slide_xml = re.sub(r'(<a:t>)%s(</a:t>)' % re.escape(old), rf'\g<1>{new}\g<2>', slide_xml)
+    return slide_xml
+
+
+def _modalidad_partner_subs(fee_rate: float, reference_salary: float) -> list[tuple[str, str]]:
     """"Modalidad Partner": fee_rate% de un SBA de referencia, pagado en dos
     plazos — 1/3 a la firma (anticipo fijo) y 2/3 a la incorporación,
-    ajustable al SBA real del candidato."""
+    ajustable al SBA real del candidato. La plantilla real reparte estos
+    números en varias formas distintas (el "12%" grande, cada plazo, la
+    nota de condiciones) en vez de un único bloque de texto — cada
+    marcador de abajo es el texto exacto de una de esas formas."""
     fee_total = reference_salary * fee_rate / 100
     anticipo = fee_total / 3
     segundo_pago = fee_total - anticipo
     rate_label = f"{fee_rate:g}"
-    return "\n".join([
-        f"{rate_label}% sobre un SBA de referencia de {_fmt_eur(reference_salary)} ({_fmt_eur(fee_total)})",
-        f"1/3 - {_fmt_eur(anticipo)} a la firma (anticipo fijo)",
-        f"2/3 - {_fmt_eur(segundo_pago)} ajustable, a la incorporación",
-    ])
+    salary_fmt = _fmt_eur(reference_salary)
+    return [
+        (_FEE_RATE_OLD, f"{rate_label}%"),
+        (_FEE_ANTICIPO_OLD, f"1/3     {_fmt_eur(anticipo)}"),
+        (_FEE_SEGUNDO_OLD, f"2/3     {_fmt_eur(segundo_pago)} ajustable"),
+        (_FEE_CONDICIONES_OLD, f"Si el SBA real es mayor o menor de {salary_fmt}, se regulariza en los 2/3."),
+    ]
 
 
 def _apply_terms_and_fee(
@@ -401,7 +457,10 @@ def _apply_terms_and_fee(
         return
 
     warranty_new = _WARRANTY_OLD.replace("3 meses", f"{warranty_months} meses")
-    today = datetime.date.today().strftime("%d/%m/%Y")
+    today = datetime.date.today()
+    today_fmt = today.strftime("%d/%m/%Y")
+    vigencia_date = today.replace(year=today.year + 1) if not (today.month == 2 and today.day == 29) \
+        else today.replace(year=today.year + 1, day=28)
 
     for slide_file in terms_slides:
         path = slides / slide_file
@@ -409,19 +468,40 @@ def _apply_terms_and_fee(
             continue
         s = _read(path)
         s = replace_text_in_xml(s, _WARRANTY_OLD, warranty_new)
-        s = replace_text_in_xml(s, _DATE_PLACEHOLDER, today)
+        s = replace_text_in_xml(s, _DATE_OLD, today_fmt)
+        s = replace_text_in_xml(s, _VIGENCIA_OLD, f"hasta el {_spanish_long_date(vigencia_date)}")
         _write(path, s)
 
     if fee_rate:
-        path = slides / fee_slide
-        if path.exists():
-            s = _read(path)
-            s = replace_text_in_xml(s, _FEE_OLD, f"{fee_rate}%")
-            rate_f = _parse_number(fee_rate)
-            salary_f = _parse_number(reference_salary)
-            if rate_f is not None and salary_f is not None:
-                s = replace_text_in_xml(s, _FEE_DETAIL_OLD, _modalidad_partner_detail(rate_f, salary_f))
-            _write(path, s)
+        rate_f = _parse_number(fee_rate)
+        salary_f = _parse_number(reference_salary)
+        if rate_f is not None and salary_f is not None:
+            path = slides / fee_slide
+            if path.exists():
+                s = _read(path)
+                for old, new in _modalidad_partner_subs(rate_f, salary_f):
+                    s = replace_text_in_xml(s, old, new)
+                s = _replace_isolated_numbers(s, [
+                    (_SBA_REF_NUMBER_OLD, _fmt_eur(salary_f).replace(" €", "")),
+                    (_SBA_FEE_TOTAL_NUMBER_OLD, _fmt_eur(rate_f * salary_f / 100).replace(" €", "")),
+                ])
+                _write(path, s)
+
+
+def _replace_title_push_body(
+    slide_xml: str, title_old: str, title_new: str, title_id: int, body_id: int, grow_ceiling_pt: float,
+) -> str:
+    """Sustituye el título (puede crecer hasta `grow_ceiling_pt`, ver
+    replace_text_and_fit) y, si de verdad ha crecido, desplaza el cuerpo
+    (una forma independiente, no un párrafo dentro del mismo cuadro) hacia
+    abajo exactamente lo que haya crecido — si no, un título de dos líneas
+    se come la primera línea del cuerpo."""
+    before = get_shape_ext_emu(slide_xml, title_id)
+    slide_xml = replace_text_and_fit(slide_xml, title_old, title_new, role="title", grow_ceiling_pt=grow_ceiling_pt)
+    after = get_shape_ext_emu(slide_xml, title_id)
+    if before and after and after[1] > before[1]:
+        slide_xml = shift_shape_y(slide_xml, body_id, after[1] - before[1])
+    return slide_xml
 
 
 # ─── HUMAN CAPITAL (solo) ──────────────────────────────────────────────
@@ -446,72 +526,71 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
     svcs = content.get("services", {})
     services = data.get("services", [])
 
-    # ── Por qué Tessera ─────────────────────────────────────────────
-    # Cada tarjeta es AHORA un único cuadro de texto (título + cuerpo como
-    # dos párrafos seguidos), no dos formas independientes — si el título
-    # ocupa más líneas, el cuerpo fluye detrás dentro del mismo cuadro sin
-    # que nadie tenga que desplazarlo a mano. Se topa el crecimiento al
-    # alto seguro de la tarjeta para que no se salga de su fondo plano.
-    pqt = _PQT_CARD_SAFE_HEIGHT_PT
+    # ── Así vamos a trabajar juntos (por qué Tessera) ────────────────
+    # Título y cuerpo de cada uno de los 3 pasos son DOS formas
+    # independientes apiladas (no un único cuadro) — así vienen en el
+    # archivo real. El título tiene hueco de fábrica para crecer un poco;
+    # si crece, el cuerpo se desplaza hacia abajo lo mismo (ver
+    # _replace_title_push_body) para no solaparse.
     if why:
         s = _read(slides / "slide5.xml")
-        if why.get("d1_title"): s = r(s, "Sin CVs al azar", why["d1_title"], grow_ceiling_pt=pqt)
-        if why.get("d1_body"):  s = r(s, "No enviamos el primer CV, buscamos a quien encaja de verdad. Candidatos filtrados sobre la mesa en 72 horas.", why["d1_body"], grow_ceiling_pt=pqt)
-        if why.get("d2_title"): s = r(s, "Sin pausas", why["d2_title"], grow_ceiling_pt=pqt)
-        if why.get("d2_body"):  s = r(s, "Tu servicio no parará.", why["d2_body"], grow_ceiling_pt=pqt)
-        if why.get("d3_title"): s = r(s, "Siempre contigo", why["d3_title"], grow_ceiling_pt=pqt)
-        if why.get("d3_body"):  s = r(s, "No desaparecemos tras la incorporación: cuidamos a la persona y al cliente.", why["d3_body"], grow_ceiling_pt=pqt)
+        if why.get("d1_title"): s = _replace_title_push_body(s, "Inmersión", why["d1_title"], 10, 11, _WHY_TITLE_CEILING_PT)
+        if why.get("d1_body"):  s = r(s, "Arrancamos conociendo tu equipo, tu cultura y tus retos. Con eso, primer shortlist filtrado en 72 horas.", why["d1_body"], grow_ceiling_pt=_WHY_BODY_CEILING_PT)
+        if why.get("d2_title"): s = _replace_title_push_body(s, "En cada paso", why["d2_title"], 14, 15, _WHY_TITLE_CEILING_PT)
+        if why.get("d2_body"):  s = r(s, "Seguimiento semanal contigo. Un interlocutor fijo y un equipo de respaldo: tus vacantes nunca se quedan paradas.", why["d2_body"], grow_ceiling_pt=_WHY_BODY_CEILING_PT)
+        if why.get("d3_title"): s = _replace_title_push_body(s, "Siempre presentes", why["d3_title"], 18, 19, _WHY_TITLE_CEILING_PT)
+        if why.get("d3_body"):  s = r(s, "Tras la incorporación seguimos ahí: acompañamos a la persona y a tu equipo.", why["d3_body"], grow_ceiling_pt=_WHY_BODY_CEILING_PT)
         _write(slides / "slide5.xml", s)
 
     # ── Headhunting ──────────────────────────────────────────────────
-    # Las 3 columnas son tarjetas planas (fondo Bruma, sin degradados ni
-    # círculos detrás) de tamaño fijo, cada una un único cuadro de texto
-    # con sus 3 filas de título+cuerpo seguidas — se topa el crecimiento
-    # al alto seguro de la tarjeta para que nunca se salga de su fondo.
+    # 3 columnas, cada una con 3 pares título+cuerpo apilados — aquí el
+    # hueco de fábrica es mínimo (pensado para una palabra y una frase
+    # corta), así que el tope de crecimiento es el propio alto de fábrica:
+    # nunca crecen, cualquier texto más largo se encoge en su sitio.
+    ht, hb = _HH_TITLE_CEILING_PT, _HH_BODY_CEILING_PT
     if "headhunting" in services and svcs.get("headhunting"):
         hh = svcs["headhunting"]
-        hc = _HEADHUNTING_CARD_SAFE_HEIGHT_PT
-        s = _read(slides / "slide6.xml")
-        if hh.get("why_col_title1"): s = r(s, "VELOCIDAD", hh["why_col_title1"], grow_ceiling_pt=hc)
-        if hh.get("why_col_body1"):  s = r(s, "Disponemos de nuestra propia metodología, la cual nos permite presentar candidatos a tiempo.", hh["why_col_body1"], grow_ceiling_pt=hc)
-        if hh.get("why_col_title2"): s = r(s, "ESPECIALIZACIÓN", hh["why_col_title2"], grow_ceiling_pt=hc)
-        if hh.get("why_col_body2"):  s = r(s, "Conocemos tu sector y cómo se construyen sus equipos.", hh["why_col_body2"], grow_ceiling_pt=hc)
-        if hh.get("why_col_title3"): s = r(s, "ÉXITO COMPARTIDO", hh["why_col_title3"], grow_ceiling_pt=hc)
-        if hh.get("why_col_body3"):  s = r(s, "El equipo que lleva tu negocio al siguiente nivel.", hh["why_col_body3"], grow_ceiling_pt=hc)
-        if hh.get("benefits_body1"): s = r(s, "Nos ocupamos de todo. Tú solo conoces a los mejores.", hh["benefits_body1"], grow_ceiling_pt=hc)
-        if hh.get("benefits_body2"): s = r(s, "Candidatos que no solo encajan: impulsan tu crecimiento.", hh["benefits_body2"], grow_ceiling_pt=hc)
-        if hh.get("benefits_body3"): s = r(s, "Tu éxito es también el nuestro.", hh["benefits_body3"], grow_ceiling_pt=hc)
-        if hh.get("how_body3"): s = r(s, "Habilidades, actitud y encaje cultural.", hh["how_body3"], grow_ceiling_pt=hc)
-        if hh.get("how_body4"): s = r(s, "Únicamente candidatos que realmente suman.", hh["how_body4"], grow_ceiling_pt=hc)
-        if hh.get("how_body5"): s = r(s, "Contigo también después de la incorporación.", hh["how_body5"], grow_ceiling_pt=hc)
-        _write(slides / "slide6.xml", s)
+        s = _read(slides / "slide7.xml")
+        if hh.get("why_col_title1"): s = r(s, "VELOCIDAD", hh["why_col_title1"], role="title", grow_ceiling_pt=ht)
+        if hh.get("why_col_body1"):  s = r(s, "Disponemos de nuestra propia metodología, la cual nos permite presentar candidatos a tiempo.", hh["why_col_body1"], grow_ceiling_pt=hb)
+        if hh.get("why_col_title2"): s = r(s, "ESPECIALIZACIÓN", hh["why_col_title2"], role="title", grow_ceiling_pt=ht)
+        if hh.get("why_col_body2"):  s = r(s, "Conocemos tu sector y cómo se construyen sus equipos.", hh["why_col_body2"], grow_ceiling_pt=hb)
+        if hh.get("why_col_title3"): s = r(s, "ÉXITO COMPARTIDO", hh["why_col_title3"], role="title", grow_ceiling_pt=ht)
+        if hh.get("why_col_body3"):  s = r(s, "El equipo que lleva tu negocio al siguiente nivel.", hh["why_col_body3"], grow_ceiling_pt=hb)
+        if hh.get("benefits_body1"): s = r(s, "Nos ocupamos de todo. Tú solo conoces a los mejores.", hh["benefits_body1"], grow_ceiling_pt=hb)
+        if hh.get("benefits_body2"): s = r(s, "Candidatos que no solo encajan: impulsan tu crecimiento.", hh["benefits_body2"], grow_ceiling_pt=hb)
+        if hh.get("benefits_body3"): s = r(s, "Tu éxito es también el nuestro.", hh["benefits_body3"], grow_ceiling_pt=hb)
+        if hh.get("how_body3"): s = r(s, "Habilidades, actitud y encaje cultural.", hh["how_body3"], grow_ceiling_pt=hb)
+        if hh.get("how_body4"): s = r(s, "Únicamente candidatos que realmente suman.", hh["how_body4"], grow_ceiling_pt=hb)
+        if hh.get("how_body5"): s = r(s, "Contigo también después de la incorporación.", hh["how_body5"], grow_ceiling_pt=hb)
+        _write(slides / "slide7.xml", s)
 
     # ── Outsourcing ──────────────────────────────────────────────────
     if "outsourcing" in services and svcs.get("outsourcing"):
         outs = svcs["outsourcing"]
-        s = _read(slides / "slide7.xml")
+        s = _read(slides / "slide8.xml")
         if outs.get("headline"): s = r(s, "Externalización que sí funciona: pagas por trabajo real, sin papeleos.", outs["headline"])
         if outs.get("body"):     s = r(s, "Contratar cuesta más de lo que parece. Con el modelo Time & Material ajustas el equipo a tu actividad real y nosotros nos encargamos de toda la gestión.", outs["body"])
         if outs.get("card1_body"): s = r(s, "Pagas solo por horas reales de trabajo.", outs["card1_body"])
         if outs.get("card2_body"): s = r(s, "Cubrimos bajas y vacaciones.", outs["card2_body"])
         if outs.get("card3_body"): s = r(s, "Nóminas y trámites, a cargo nuestro.", outs["card3_body"])
         if outs.get("card4_body"): s = r(s, "Escalas el equipo cuando quieras.", outs["card4_body"])
-        _write(slides / "slide7.xml", s)
+        _write(slides / "slide8.xml", s)
 
     # ── Consultoría Salarial ─────────────────────────────────────────
     if "salary" in services and svcs.get("salary"):
         sal = svcs["salary"]
-        s = _read(slides / "slide8.xml")
+        s = _read(slides / "slide9.xml")
         if sal.get("headline"): s = r(s, "Inteligencia retributiva para decisiones que importan.", sal["headline"])
         if sal.get("body"):     s = r(s, "Acompañamos a organizaciones en el diseño de estructuras salariales coherentes, alineadas con el mercado y preparadas para el nuevo marco regulatorio europeo.", sal["body"])
-        _write(slides / "slide8.xml", s)
+        _write(slides / "slide9.xml", s)
 
     # ── Formación ────────────────────────────────────────────────────
     if "formacion" in services and svcs.get("formacion"):
         form = svcs["formacion"]
-        s = _read(slides / "slide9.xml")
+        s = _read(slides / "slide10.xml")
         if form.get("body"): s = r(s, "Potenciamos el talento interno: consultoría en formación orientada a procesos y resultados ágiles.", form["body"])
-        _write(slides / "slide9.xml", s)
+        _write(slides / "slide10.xml", s)
 
     # ── Diapositivas de servicio no seleccionadas: se quitan ─────────
     to_remove = [fn for key, fn in HC_SERVICE_SLIDES.items() if key not in services]
@@ -536,27 +615,25 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
 # ─── HUMAN CAPITAL + FINANCE ────────────────────────────────────────────
 def _build_hc_finance(data: dict, content: dict, unpack: Path) -> None:
     # Human Capital + Finance no tiene ningún flujo de fee/honorarios ni de
-    # términos y condiciones (decisión del equipo): el contenido es fijo,
-    # solo cambian sedes y equipo.
+    # términos y condiciones (el archivo real nunca los trajo) y tampoco
+    # alternativa de sedes (decisión del equipo) — el contenido es fijo,
+    # solo cambia el equipo.
     _build_index_and_context(data, unpack, _HCF_DONOR)
-
-    show_all_locations = data.get("locations", "all") == "all"
-    drop_location = HCF_LOCATION_SLIDES["madrid" if show_all_locations else "all"]
 
     include_eduardo = bool(data.get("include_eduardo"))
     drop_team = HCF_TEAM_SLIDES["no_eduardo" if include_eduardo else "con_eduardo"]
 
-    _remove_slides(unpack, [drop_location, drop_team])
+    _remove_slides(unpack, [drop_team])
 
 
 # ─── LOGO DEL CLIENTE (portada + cierre) ──────────────────────────────────
 # Qué diapositiva/forma sustituir por línea de negocio — el hueco (un
 # <p:pic> de relleno transparente) se añadió a las plantillas con
-# scripts/build_templates/rebuild_v2.py; estos ids son los que asignó ese
+# scripts/build_templates/rebuild_v3.py; estos ids son los que asignó ese
 # script en cada plantilla.
 _LOGO_SLOTS: dict[str, list[tuple[str, int]]] = {
-    "hc": [("slide1.xml", 10), ("slide15.xml", 9)],
-    "hc_finance": [("slide1.xml", 14), ("slide15.xml", 10)],
+    "hc": [("slide1.xml", 8), ("slide17.xml", 10)],
+    "hc_finance": [("slide1.xml", 10), ("slide11.xml", 9)],
 }
 
 

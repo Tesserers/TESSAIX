@@ -116,7 +116,13 @@ REGLAS ABSOLUTAS:
 - Los textos tienen que REEMPLAZAR los existentes completamente, sin mezclar con el original
 - Cada texto debe ser completo y autónomo, listo para aparecer en el slide tal cual
 - SÉ CONCISO: los títulos y titulares aparecen en cajas de tamaño fijo en el slide.
-  Títulos: máximo 4-6 palabras. Cuerpos de texto: máximo 2-3 líneas (unos 150-200 caracteres)."""
+  Títulos: máximo 4-6 palabras. Cuerpos de texto: máximo 2-3 líneas (unos 150-200 caracteres)
+- Tienes una herramienta web_search: úsala para buscar información pública real sobre la
+  empresa cliente (a qué se dedica exactamente, tamaño, retos típicos de su sector) y que
+  el contenido sea específico de esa empresa, no una plantilla genérica. Usa solo datos que
+  hayas encontrado así; si no encuentras nada fiable, escribe contenido genérico pero
+  específico del SECTOR, sin inventar cifras ni hechos concretos de la empresa. Nunca cites
+  fuentes ni menciones que has buscado — responde solo con el JSON pedido, nada más."""
 
 SYSTEM_EN = """Senior commercial consultant at Tessera Human Capital. Return ONLY valid JSON.
 ABSOLUTE RULES:
@@ -127,7 +133,13 @@ Neutral, professional business tone. Check there are no spelling or grammar mist
 before answering. Use plain, everyday words — never obscure or overly formal vocabulary
 (for example, never say "utilize"; say "use" instead).
 BE CONCISE: titles and headlines sit in fixed-size boxes on the slide.
-Titles: max 4-6 words. Body copy: max 2-3 lines (about 150-200 characters)."""
+Titles: max 4-6 words. Body copy: max 2-3 lines (about 150-200 characters).
+You have a web_search tool: use it to look up real, public information about the client
+company (what it exactly does, its size, typical challenges in its sector) so the content
+is specific to that company, not a generic template. Only use facts you actually found this
+way; if you find nothing reliable, write generic-but-sector-specific content instead of
+inventing company-specific facts or figures. Never cite sources or mention that you
+searched — respond only with the requested JSON, nothing else."""
 
 
 def generate_content(data: dict) -> dict | None:
@@ -173,12 +185,13 @@ Devuelve este JSON con contenido REAL y COMPLETO (no placeholders):
   }}
 }}"""
 
-    with st.spinner("Generando contenido adaptado al cliente..."):
+    with st.spinner("Buscando información del cliente y generando contenido..."):
         msg = client.messages.create(
             model="claude-sonnet-4-6", max_tokens=4000,
-            system=system, messages=[{"role": "user", "content": prompt}]
+            system=system, messages=[{"role": "user", "content": prompt}],
+            tools=[_web_search_tool(data)],
         )
-    raw = msg.content[0].text.strip()
+    raw = _text_from_response(msg).strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     # Limpia claves vacías que a veces cuela el modelo

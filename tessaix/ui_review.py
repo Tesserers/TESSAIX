@@ -59,6 +59,25 @@ _SERVICE_FIELDS = {
 }
 
 
+def _clear_content_widget_keys():
+    """
+    Los widgets de `_render_content_editor` usan `key=` fijas (`why_d1_title`,
+    `headhunting_headline`, …) para que Streamlit recuerde lo que el usuario
+    ha tecleado entre reruns. Pero eso significa que, al (re)generar
+    contenido nuevo, Streamlit sigue mostrando el valor ANTIGUO que ya tenía
+    guardado bajo esa key en vez del `value=` recién generado — el cuadro de
+    texto parece "no actualizarse" (o aparecer vacío, si es la primera vez
+    que se pulsa "Generar" tras haber dejado algún campo en blanco antes).
+    Se borran esas keys justo antes de guardar contenido nuevo para que los
+    widgets se construyan limpios en el próximo rerun.
+    """
+    for key, _, _ in _WHY_FIELDS:
+        st.session_state.pop(f"why_{key}", None)
+    for svc, svc_fields in _SERVICE_FIELDS.items():
+        for key, _, _ in svc_fields:
+            st.session_state.pop(f"{svc}_{key}", None)
+
+
 def _text_field(container: dict, key: str, label: str, kind: str, widget_key: str):
     current = container.get(key, "") or ""
     if kind == "area":
@@ -186,6 +205,7 @@ def step_review():
         if st.button("✦ Generar propuesta", use_container_width=True):
             c = generate_content(data)
             if c:
+                _clear_content_widget_keys()
                 st.session_state.content = c
                 st.rerun()
         cb, _ = st.columns([1, 4])
@@ -207,6 +227,7 @@ def step_review():
         if st.button("↺ Regenerar propuesta"):
             c = generate_content(data)
             if c:
+                _clear_content_widget_keys()
                 st.session_state.content = c
                 st.rerun()
     with cn_:
