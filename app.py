@@ -34,6 +34,8 @@ DEFAULT_SESSION_STATE = [
     ("form", {}),
     ("content", None),
     ("pptx", None),
+    ("logo_bytes", None),
+    ("logo_autofetch_tried", False),
 ]
 
 

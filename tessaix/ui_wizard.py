@@ -105,7 +105,12 @@ def step_equipo():
         )
         include_eduardo = st.checkbox("Incluir también a Eduardo Serrano", value=include_eduardo)
     else:
-        st.caption("El equipo de esta propuesta es fijo: Eduardo Serrano, Manuel Pina y Edward Manrique.")
+        # El equipo ya no se elige a mano: lo decide el tipo de propuesta
+        # (de momento) — sin fee va con Eduardo Serrano, con fee va sin él.
+        if data.get("deck_type") == "propuesta":
+            st.caption("Equipo de esta propuesta (con fee): Manuel Pina y Edward Manrique.")
+        else:
+            st.caption("Equipo de esta propuesta (sin fee): Eduardo Serrano, Manuel Pina y Edward Manrique.")
 
     st.markdown("---")
     st.markdown("#### Sedes a mostrar")
@@ -117,7 +122,7 @@ def step_equipo():
     locations = "madrid" if "Solo Madrid" in locations_label else "all"
 
     warranty_months = data.get("warranty_months", WARRANTY_MONTHS_OPTIONS[0])
-    if data.get("deck_type") == "propuesta":
+    if not is_hc_finance and data.get("deck_type") == "propuesta":
         st.markdown("---")
         st.markdown("#### Garantía (términos y condiciones)")
         warranty_months = st.radio(
@@ -156,8 +161,16 @@ def step_contexto():
     rn = st.text_area("Perfiles que necesitan cubrir", height=60,
                        placeholder="Ej: Jefes de sección, reponedores, 1 HR Business Partner…")
     fee = ""
-    if st.session_state.form.get("deck_type") == "propuesta":
-        fee = st.text_input("Fee propuesto (%)", placeholder="Ej: 16")
+    reference_salary = ""
+    # Human Capital + Finance ya no tiene flujo de fee: estos campos solo
+    # aplican a Human Capital con "Propuesta completa (con fees)".
+    if not is_hc_finance and st.session_state.form.get("deck_type") == "propuesta":
+        st.markdown("#### Modalidad Partner (honorarios)")
+        c1, c2 = st.columns(2)
+        with c1:
+            fee = st.text_input("Fee (%)", placeholder="Ej: 12")
+        with c2:
+            reference_salary = st.text_input("SBA de referencia (€)", placeholder="Ej: 36000")
     ei = st.text_area("Info adicional (web, reunión previa, LinkedIn…)", height=90,
                        placeholder="Pega aquí todo lo que sepas del cliente…")
     cb, cn_ = st.columns([1, 4])
@@ -169,7 +182,7 @@ def step_contexto():
         if st.button("Siguiente →"):
             st.session_state.form.update({
                 "pain_points": pp, "roles_needed": rn,
-                "fee_rate": fee, "extra_info": ei
+                "fee_rate": fee, "reference_salary": reference_salary, "extra_info": ei
             })
             st.session_state.step = STEP_REVIEW
             st.rerun()

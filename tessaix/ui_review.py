@@ -9,10 +9,13 @@ decisiones estructurales (equipo, sedes, fee) antes de generar.
 """
 from __future__ import annotations
 
+import io
+
 import streamlit as st
 
 from .ai_content import generate_content
 from .config import BUSINESS_LINE_HC_FINANCE, SERVICES_HC, STEP_CONTEXTO, STEP_GENERATE
+from .logo_client import MIN_LOGO_DIM, checkerboard_preview, fetch_client_logo, logo_quality_label, normalize_domain
 
 _WHY_FIELDS = [
     ("d1_title", "Título diferenciador 1", "input"),
@@ -94,18 +97,60 @@ def _render_structural_summary(data: dict):
     rows = [
         ("Equipo", "Con Eduardo Serrano" if data.get("include_eduardo") else "Sin Eduardo Serrano"),
         ("Sedes", "Las 3 sedes" if data.get("locations", "all") == "all" else "Solo Madrid"),
-        ("Tipo", "Con fee y garantía" if data.get("deck_type") == "propuesta" else "Sin fee"),
     ]
-    if data.get("deck_type") == "propuesta":
-        rows.append(("Garantía", f"{data.get('warranty_months', 3)} meses"))
-        if data.get("fee_rate"):
-            rows.append(("Fee", f"{data['fee_rate']}%"))
     html_r = "".join(f'<div class="sr"><span class="sk">{k}</span><span class="sv">{v}</span></div>' for k, v in rows)
     st.markdown(f'<div class="sum">{html_r}</div>', unsafe_allow_html=True)
     st.caption(
         "El contenido de las diapositivas de servicio (Finance, Human Capital, Por qué Tessera) "
         "es fijo en las propuestas de Human Capital + Finance."
     )
+
+
+def _render_logo_section(data: dict):
+    """
+    Logo del cliente para la portada y el cierre — se busca automáticamente
+    una vez por propuesta a partir de la web del cliente (campo ya pedido
+    en el paso «Cliente»), con opción de subir uno a mano si no se
+    encuentra o si la calidad no convence. Se compone sin deformar y sin
+    fondo de color al generar el .pptx (ver tessaix/logo_client.py) —
+    aquí solo se guardan los bytes elegidos en session_state.
+    """
+    st.markdown("#### 🖼️ Logo del cliente")
+    st.caption("Aparece en la portada y en el cierre de la propuesta.")
+
+    if not st.session_state.logo_autofetch_tried and st.session_state.logo_bytes is None:
+        domain = normalize_domain(data.get("client_website", ""), data.get("client_name", ""))
+        with st.spinner("Buscando el logo del cliente…"):
+            meta = fetch_client_logo(domain)
+        st.session_state.logo_autofetch_tried = True
+        st.session_state["_logo_meta"] = meta
+        if meta:
+            st.session_state.logo_bytes = meta["bytes"]
+
+    if st.session_state.logo_bytes:
+        level, msg = logo_quality_label(st.session_state.get("_logo_meta"))
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            st.image(checkerboard_preview(st.session_state.logo_bytes), width=200)
+        with c2:
+            icon = {"ok": "✅", "low": "⚠️"}.get(level, "ℹ️")
+            st.caption(f"{icon} {msg}")
+    else:
+        st.caption("No se ha encontrado ningún logo automáticamente. Puedes subirlo a mano.")
+
+    upload = st.file_uploader("Subir logo manualmente (PNG o JPG)", type=["png", "jpg", "jpeg"], key="logo_upload")
+    if upload is not None:
+        data_bytes = upload.getvalue()
+        if data_bytes != st.session_state.get("_logo_uploaded_bytes"):
+            from PIL import Image
+            w, h = Image.open(io.BytesIO(data_bytes)).size
+            st.session_state.logo_bytes = data_bytes
+            st.session_state["_logo_uploaded_bytes"] = data_bytes
+            st.session_state["_logo_meta"] = {
+                "ok": min(w, h) >= MIN_LOGO_DIM, "source": "subido a mano", "width": w, "height": h,
+            }
+            st.rerun()
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
 
 def step_review():
@@ -117,6 +162,8 @@ def step_review():
         "Aquí se enseña todo lo que va a aparecer en el PowerPoint. Revísalo y edítalo "
         "las veces que haga falta — el archivo no se genera hasta que le des a «Generar PPTX»."
     )
+
+    _render_logo_section(data)
 
     if is_hc_finance:
         if st.session_state.content is None:

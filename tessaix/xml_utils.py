@@ -525,6 +525,25 @@ def get_picture_frame_emu(slide_xml: str, rid: str) -> tuple[int, int] | None:
     return None
 
 
+def find_pic_embed_rid(slide_xml: str, shape_id: int) -> str | None:
+    """
+    Dado el id de una forma <p:pic> (su <p:cNvPr id="...">), devuelve el
+    r:id de la relación de imagen que usa (<a:blip r:embed="...">) — con
+    eso y `resolve_rel_target` sobre el .rels de la diapositiva se llega al
+    archivo de media real a sustituir, sin tocar el tamaño/posición del
+    hueco en la diapositiva.
+    """
+    pic_re = re.compile(
+        r'<p:pic>(?:(?!</p:pic>).)*?<p:cNvPr\b[^>]*\bid="%d"(?:(?!</p:pic>).)*?</p:pic>' % shape_id,
+        re.DOTALL,
+    )
+    m = pic_re.search(slide_xml)
+    if not m:
+        return None
+    embed = re.search(r'<a:blip\b[^>]*\br:embed="(rId\d+)"', m.group(0))
+    return embed.group(1) if embed else None
+
+
 def get_slide_size_emu(presentation_xml: str) -> tuple[int, int] | None:
     """Tamaño (cx, cy) en EMU de la diapositiva, desde <p:sldSz> en presentation.xml."""
     m = re.search(r'<p:sldSz\s+cx="(\d+)"\s+cy="(\d+)"', presentation_xml)

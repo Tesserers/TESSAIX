@@ -30,49 +30,69 @@ from pptx import Presentation
 
 from .ai_content import generate_context_paragraph
 from .config import BUSINESS_LINE_HC_FINANCE, PLANTILLA_HC, PLANTILLA_HC_FINANCE, SERVICES_HC
+from .logo_client import compose_logo_for_placeholder
 from .team import LOCATIONS_MADRID_ONLY
 from .xml_utils import (
     center_vertical_anchor,
     enable_shrink_autofit,
+    find_pic_embed_rid,
+    get_picture_frame_emu,
     remove_content_type_override,
     remove_relationship,
     remove_shape_by_id,
     remove_sld_id,
     replace_text_and_fit,
     replace_text_in_xml,
+    resolve_rel_target,
     resolve_rid_for_target,
 )
 
 # ─── SLIDES DE CADA PLANTILLA (numeración fija, 1-indexada) ───────────────
-# plantilla_hc.pptx (15 diapositivas antes de añadir Índice/Contexto):
-#  1 portada · 2 equipo (fijo) · 3 sedes (3 ciudades) · 4 sedes (solo Madrid)
-#  5 por qué Tessera · 6 headhunting · 7 outsourcing · 8 salarial · 9 formación
-#  10 Tessera Services (estático) · 11-12 términos y condiciones · 13 honorarios
-#  14 confían en nosotros · 15 cierre
+# plantilla_hc.pptx (18 diapositivas antes de añadir Índice/Contexto):
+#  1 portada · 2 equipo con Eduardo Serrano (sin fee) / 2b equipo sin él
+#  (con fee) — alternativa según deck_type, no hay nada que elegir a mano
+#  · 3 sedes (3 ciudades) · 4 sedes (solo Madrid) · 5 por qué Tessera
+#  · 5b "No somos un proveedor de CVs" (comparativa, SIEMPRE se conserva,
+#  en los dos modelos de fee) · 6 headhunting · 7 outsourcing · 8 salarial
+#  · 9 formación · 10 Tessera Services (estático) · 10b Próximos pasos
+#  (solo con fee) · 11-12 términos y condiciones (solo con fee) · 13
+#  honorarios — Modalidad Partner (solo con fee) · 14 confían en nosotros
+#  · 15 cierre
 HC_SLIDES_DYNAMIC_TEXT = ["slide5.xml", "slide6.xml", "slide7.xml", "slide8.xml", "slide9.xml"]
 HC_LOCATION_SLIDES = {"all": "slide3.xml", "madrid": "slide4.xml"}
+HC_TEAM_SLIDES = {"con_eduardo": "slide2.xml", "sin_eduardo": "slide2b.xml"}
+HC_NEXT_STEPS_SLIDE = "slide10b.xml"
 HC_TERMS_SLIDES = ["slide11.xml", "slide12.xml"]
 HC_FEE_SLIDE = "slide13.xml"
 HC_SERVICE_SLIDES = {"headhunting": "slide6.xml", "outsourcing": "slide7.xml",
                       "salary": "slide8.xml", "formacion": "slide9.xml"}
 
-# plantilla_hc_finance.pptx (15 diapositivas antes de añadir Índice/Contexto):
+# plantilla_hc_finance.pptx (12 diapositivas antes de añadir Índice/Contexto):
 #  1 portada · 2/3 "Tessera en una página" (3 sedes / solo Madrid, se
 #  conserva una y se borra la otra) · 4/5 equipo (sin/con Eduardo Serrano,
 #  igual: se conserva una) · 6 para el fondo · 7 servicios Finance
 #  8 servicios Human Capital (resumen) · 9 por qué Tessera
-#  10-11 términos y condiciones · 12 honorarios · 13 confían en nosotros
-#  14 contacto · 15 cierre
+#  10 confían en nosotros · 11 contacto · 12 cierre
+# Human Capital + Finance ya no tiene ningún flujo de fee/honorarios ni de
+# términos y condiciones — esas diapositivas se quitaron de la plantilla.
 HCF_LOCATION_SLIDES = {"all": "slide2.xml", "madrid": "slide3.xml"}
 HCF_TEAM_SLIDES = {"no_eduardo": "slide4.xml", "con_eduardo": "slide5.xml"}
-HCF_TERMS_SLIDES = ["slide10.xml", "slide11.xml"]
-HCF_FEE_SLIDE = "slide12.xml"
 
 # Texto exacto (tal y como está en la plantilla) del bloque de garantía y
-# de la firma, común a las dos plantillas — ver team.py para las opciones.
+# de la firma — solo en plantilla_hc.pptx, la única con flujo de fee.
 _WARRANTY_OLD = "dentro de los 3 meses siguientes a la fecha de contratación"
 _DATE_PLACEHOLDER = "{dd/mm/aaaa}"
 _FEE_OLD = "13%"
+# "Modalidad Partner": fee_rate% sobre un salario bruto anual (SBA) de
+# referencia, en dos plazos (1/3 a la firma, 2/3 ajustable a la
+# incorporación) — ver _modalidad_partner_detail. El texto de abajo es el
+# ejemplo de fábrica (12% sobre 36.000 €) tal y como está escrito en la
+# plantilla; se sustituye entero por los valores reales del wizard.
+_FEE_DETAIL_OLD = (
+    "12% sobre un SBA de referencia de 36.000 € (4.320 €)\n"
+    "1/3 - 1.440 € a la firma (anticipo fijo)\n"
+    "2/3 - 2.880 € ajustable, a la incorporación"
+)
 
 # ─── DONANTES PARA CLONAR "ÍNDICE" Y "CONTEXTO" ───────────────────────────
 # Cada plantilla tiene ya una diapositiva con el "cascarón" que se necesita
@@ -292,19 +312,18 @@ def _index_items(data: dict) -> list[str]:
     is_hc_finance = data.get("business_line") == BUSINESS_LINE_HC_FINANCE
     include_fee = data.get("deck_type") == "propuesta"
     if is_hc_finance:
+        # Human Capital + Finance ya no tiene flujo de fee: su índice nunca
+        # incluye "Honorarios".
         items = [
             "Contexto", "Tessera en una página", "Nuestro equipo",
             "Para el fondo", "Servicios Finance", "Servicios Human Capital",
-            "Por qué Tessera",
+            "Por qué Tessera", "Confían en nosotros", "Contacto",
         ]
-        if include_fee:
-            items.append("Honorarios")
-        items += ["Confían en nosotros", "Contacto"]
     else:
-        items = ["Contexto", "Nuestro equipo", "Dónde estamos", "Por qué Tessera"]
+        items = ["Contexto", "Nuestro equipo", "Dónde estamos", "Por qué Tessera", "Cómo trabajamos"]
         items += [SERVICES_HC.get(s, s) for s in data.get("services", [])]
         if include_fee:
-            items.append("Honorarios")
+            items += ["Próximos pasos", "Honorarios"]
         items.append("Confían en nosotros")
     return items
 
@@ -335,15 +354,50 @@ def _build_index_and_context(data: dict, unpack: Path, donor: dict) -> None:
     )
 
 
-# ─── TÉRMINOS Y CONDICIONES + HONORARIOS (compartido) ─────────────────────
+# ─── TÉRMINOS Y CONDICIONES + HONORARIOS (solo Human Capital) ─────────────
+def _fmt_eur(value: float) -> str:
+    """1440.0 -> '1.440 €' (separador de miles con punto, sin decimales —
+    así es como aparece ya escrito en la plantilla)."""
+    return f"{value:,.0f}".replace(",", ".") + " €"
+
+
+def _parse_number(raw: str | None) -> float | None:
+    """Admite tanto '36000' como '36.000' o '36.000,50' (formato español)."""
+    if not raw:
+        return None
+    cleaned = str(raw).strip().replace(".", "").replace(",", ".")
+    try:
+        return float(cleaned)
+    except ValueError:
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+
+def _modalidad_partner_detail(fee_rate: float, reference_salary: float) -> str:
+    """"Modalidad Partner": fee_rate% de un SBA de referencia, pagado en dos
+    plazos — 1/3 a la firma (anticipo fijo) y 2/3 a la incorporación,
+    ajustable al SBA real del candidato."""
+    fee_total = reference_salary * fee_rate / 100
+    anticipo = fee_total / 3
+    segundo_pago = fee_total - anticipo
+    rate_label = f"{fee_rate:g}"
+    return "\n".join([
+        f"{rate_label}% sobre un SBA de referencia de {_fmt_eur(reference_salary)} ({_fmt_eur(fee_total)})",
+        f"1/3 - {_fmt_eur(anticipo)} a la firma (anticipo fijo)",
+        f"2/3 - {_fmt_eur(segundo_pago)} ajustable, a la incorporación",
+    ])
+
+
 def _apply_terms_and_fee(
-    unpack: Path, terms_slides: list[str], fee_slide: str,
-    include_fee: bool, warranty_months: int, fee_rate: str | None,
+    unpack: Path, terms_slides: list[str], fee_slide: str, next_steps_slide: str,
+    include_fee: bool, warranty_months: int, fee_rate: str | None, reference_salary: str | None,
 ) -> None:
     slides = unpack / "ppt" / "slides"
 
     if not include_fee:
-        _remove_slides(unpack, terms_slides + [fee_slide])
+        _remove_slides(unpack, terms_slides + [fee_slide, next_steps_slide])
         return
 
     warranty_new = _WARRANTY_OLD.replace("3 meses", f"{warranty_months} meses")
@@ -361,7 +415,13 @@ def _apply_terms_and_fee(
     if fee_rate:
         path = slides / fee_slide
         if path.exists():
-            _write(path, replace_text_in_xml(_read(path), _FEE_OLD, f"{fee_rate}%"))
+            s = _read(path)
+            s = replace_text_in_xml(s, _FEE_OLD, f"{fee_rate}%")
+            rate_f = _parse_number(fee_rate)
+            salary_f = _parse_number(reference_salary)
+            if rate_f is not None and salary_f is not None:
+                s = replace_text_in_xml(s, _FEE_DETAIL_OLD, _modalidad_partner_detail(rate_f, salary_f))
+            _write(path, s)
 
 
 # ─── HUMAN CAPITAL (solo) ──────────────────────────────────────────────
@@ -373,7 +433,14 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
 
     show_all_locations = data.get("locations", "all") != LOCATIONS_MADRID_ONLY
     drop_location = HC_LOCATION_SLIDES["madrid" if show_all_locations else "all"]
-    _remove_slides(unpack, [drop_location])
+
+    # Equipo: ya no se pregunta en el wizard — lo decide el tipo de
+    # propuesta. Sin fee (presentación) va con Eduardo Serrano; con fee
+    # (propuesta) va sin él, de momento (ver conversación con el equipo).
+    include_fee = data.get("deck_type") == "propuesta"
+    drop_team = HC_TEAM_SLIDES["con_eduardo" if include_fee else "sin_eduardo"]
+
+    _remove_slides(unpack, [drop_location, drop_team])
 
     why = content.get("why_tessera", {})
     svcs = content.get("services", {})
@@ -458,33 +525,68 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
             _write(path, enable_shrink_autofit(_read(path)))
 
     _apply_terms_and_fee(
-        unpack, HC_TERMS_SLIDES, HC_FEE_SLIDE,
-        include_fee=data.get("deck_type") == "propuesta",
+        unpack, HC_TERMS_SLIDES, HC_FEE_SLIDE, HC_NEXT_STEPS_SLIDE,
+        include_fee=include_fee,
         warranty_months=data.get("warranty_months", 3),
         fee_rate=data.get("fee_rate"),
+        reference_salary=data.get("reference_salary"),
     )
 
 
 # ─── HUMAN CAPITAL + FINANCE ────────────────────────────────────────────
 def _build_hc_finance(data: dict, content: dict, unpack: Path) -> None:
+    # Human Capital + Finance no tiene ningún flujo de fee/honorarios ni de
+    # términos y condiciones (decisión del equipo): el contenido es fijo,
+    # solo cambian sedes y equipo.
     _build_index_and_context(data, unpack, _HCF_DONOR)
 
     show_all_locations = data.get("locations", "all") == "all"
-    keep_location = HCF_LOCATION_SLIDES["all" if show_all_locations else "madrid"]
     drop_location = HCF_LOCATION_SLIDES["madrid" if show_all_locations else "all"]
 
     include_eduardo = bool(data.get("include_eduardo"))
-    keep_team = HCF_TEAM_SLIDES["con_eduardo" if include_eduardo else "no_eduardo"]
     drop_team = HCF_TEAM_SLIDES["no_eduardo" if include_eduardo else "con_eduardo"]
 
     _remove_slides(unpack, [drop_location, drop_team])
 
-    _apply_terms_and_fee(
-        unpack, HCF_TERMS_SLIDES, HCF_FEE_SLIDE,
-        include_fee=data.get("deck_type") == "propuesta",
-        warranty_months=data.get("warranty_months", 3),
-        fee_rate=data.get("fee_rate"),
-    )
+
+# ─── LOGO DEL CLIENTE (portada + cierre) ──────────────────────────────────
+# Qué diapositiva/forma sustituir por línea de negocio — el hueco (un
+# <p:pic> de relleno transparente) se añadió a las plantillas con
+# scripts/build_templates/rebuild_v2.py; estos ids son los que asignó ese
+# script en cada plantilla.
+_LOGO_SLOTS: dict[str, list[tuple[str, int]]] = {
+    "hc": [("slide1.xml", 10), ("slide15.xml", 9)],
+    "hc_finance": [("slide1.xml", 14), ("slide15.xml", 10)],
+}
+
+
+def _replace_client_logo(unpack: Path, slide_file: str, shape_id: int, logo_bytes: bytes) -> None:
+    """
+    Sustituye la imagen de la forma `shape_id` (un <p:pic>, el hueco de
+    logo del cliente) por `logo_bytes`, compuesto sin deformar y sin caja
+    de color alrededor (ver `compose_logo_for_placeholder`). Solo toca el
+    archivo de media al que ya apunta esa forma — el tamaño/posición del
+    hueco en la diapositiva no cambia.
+    """
+    slide_path = unpack / "ppt" / "slides" / slide_file
+    if not slide_path.exists():
+        return
+    slide_xml = _read(slide_path)
+    rid = find_pic_embed_rid(slide_xml, shape_id)
+    if not rid:
+        return
+    frame = get_picture_frame_emu(slide_xml, rid)
+    if not frame:
+        return
+    rels_path = unpack / "ppt" / "slides" / "_rels" / f"{slide_file}.rels"
+    target = resolve_rel_target(_read(rels_path), rid)
+    if not target:
+        return
+    media_path = (slide_path.parent / target).resolve()
+    if not media_path.exists():
+        return
+    composed = compose_logo_for_placeholder(logo_bytes, frame[0], frame[1])
+    media_path.write_bytes(composed)
 
 
 # ─── PUNTO DE ENTRADA ────────────────────────────────────────────────────
@@ -505,6 +607,10 @@ def build_pptx(data: dict, content: dict, logo_bytes: bytes | None = None) -> by
             _build_hc_finance(data, content, unpack)
         else:
             _build_hc(data, content, unpack)
+
+        if logo_bytes:
+            for slide_file, shape_id in _LOGO_SLOTS.get(business_line, []):
+                _replace_client_logo(unpack, slide_file, shape_id, logo_bytes)
 
         out = tmp / "output.pptx"
         with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
