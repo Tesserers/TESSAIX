@@ -121,8 +121,8 @@ def build_plantilla_hc() -> None:
     _write(slides / "slide4b.xml", s)
 
     # Hueco de logo de cliente: portada (slide1.xml) y cierre (slide17.xml).
-    add_logo_placeholder(unpack, "slide1.xml", "logo_cliente_portada.png", 560, 390, 320, 70)
-    add_logo_placeholder(unpack, "slide17.xml", "logo_cliente_cierre.png", 560, 250, 320, 70)
+    add_logo_placeholder(unpack, "slide1.xml", "logo_cliente_portada.png", 460, 140, 420, 280)
+    add_logo_placeholder(unpack, "slide17.xml", "logo_cliente_cierre.png", 460, 140, 420, 280)
 
     out = ROOT / "plantilla_hc.pptx"
     repack(unpack, out)
@@ -133,8 +133,8 @@ def build_plantilla_hc_finance() -> None:
     unpack = ROOT / "scripts" / "build_templates" / "_work_hcf3"
     unpack_to(CATALOGO_SRC, unpack)
 
-    add_logo_placeholder(unpack, "slide1.xml", "logo_cliente_portada.png", 560, 390, 320, 70)
-    add_logo_placeholder(unpack, "slide11.xml", "logo_cliente_cierre.png", 560, 250, 320, 70)
+    add_logo_placeholder(unpack, "slide1.xml", "logo_cliente_portada.png", 460, 140, 420, 280)
+    add_logo_placeholder(unpack, "slide11.xml", "logo_cliente_cierre.png", 460, 140, 420, 280)
 
     out = ROOT / "plantilla_hc_finance.pptx"
     repack(unpack, out)
