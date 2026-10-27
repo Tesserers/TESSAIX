@@ -17,7 +17,7 @@ from __future__ import annotations
 import io
 
 import requests as rq
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageOps
 
 # Por debajo de esto, un logo se considera "de baja calidad" para el hueco
 # habitual de portada (~4.2 x 2.7 cm a resolución de impresión). Se sigue
@@ -93,44 +93,6 @@ def logo_quality_label(meta: dict | None) -> tuple[str, str]:
     )
 
 
-def _corners_match(img: Image.Image, tolerance: int) -> bool:
-    w, h = img.size
-    px = img.load()
-    corners = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
-    ref = px[corners[0]]
-    if ref[3] == 0:
-        return False  # ya transparente: nada que quitar
-    return all(
-        all(abs(a - b) <= tolerance for a, b in zip(ref, px[c]))
-        for c in corners[1:]
-    )
-
-
-def strip_flat_background(logo_bytes: bytes, tolerance: int = 20) -> bytes:
-    """
-    Si el logo de origen trae su propio fondo de color PLANO pegado detrás
-    (p.ej. una caja de color sólido, como suelen traer los logos
-    descargados automáticamente de favicons/Clearbit), lo convierte a
-    transparente. Comprueba que las 4 esquinas sean del mismo color — si lo
-    son, aplica un relleno por contigüidad (flood fill) desde cada esquina,
-    así solo se vacía la región de fondo conectada a los bordes, nunca el
-    interior del propio logotipo aunque comparta ese color en algún punto.
-
-    Si el fondo NO es uniforme (ya es transparente, o es una foto/textura),
-    no se toca nada — devuelve los bytes originales.
-    """
-    img = Image.open(io.BytesIO(logo_bytes))
-    img = ImageOps.exif_transpose(img).convert("RGBA")
-    if not _corners_match(img, tolerance):
-        return logo_bytes
-    w, h = img.size
-    for seed in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]:
-        ImageDraw.floodfill(img, seed, (0, 0, 0, 0), thresh=tolerance)
-    buf = io.BytesIO()
-    img.save(buf, "PNG")
-    return buf.getvalue()
-
-
 def compose_logo_for_placeholder(
     logo_bytes: bytes,
     target_w_emu: int,
@@ -146,17 +108,13 @@ def compose_logo_for_placeholder(
     correcta, el estiramiento resultante es uniforme y el logo conserva su
     forma original.
 
-    El lienzo es TRANSPARENTE por defecto (no blanco): el logo se pega tal
-    cual es, sin añadirle una caja de color alrededor — se adapta a su
-    propia silueta y deja ver el fondo de la diapositiva a su alrededor. Si
-    el logo de origen trae su propio fondo de color PLANO (p.ej. una caja
-    sólida detrás del nombre de la empresa), se quita primero con
-    `strip_flat_background` — si el fondo no es plano (foto, textura), se
-    deja tal cual, no hay forma automática segura de recortarlo.
+    El lienzo es TRANSPARENTE por defecto (no blanco): si el logo de origen
+    ya es transparente, no se le añade ningún fondo. El propio logo NUNCA
+    se modifica — ni se le añade fondo ni se le quita el que ya traiga —
+    solo se encaja sin deformar dentro del hueco de la plantilla.
 
     Devuelve bytes PNG listos para sustituir el media del placeholder.
     """
-    logo_bytes = strip_flat_background(logo_bytes)
     img = Image.open(io.BytesIO(logo_bytes))
     img = ImageOps.exif_transpose(img).convert("RGBA")
 

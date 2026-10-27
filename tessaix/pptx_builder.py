@@ -131,7 +131,7 @@ _SBA_FEE_TOTAL_NUMBER_OLD = "4.320"
 # contenido.
 _HC_DONOR = {
     "slide": "slide5.xml",
-    "prune_ids": [7, 9, 10, 11, 13, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 27, 28],
+    "prune_ids": [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28],
     "eyebrow_old": "NUESTRA FUERZA",
     "title_old": "Así vamos a trabajar juntos",
     "body_old": "No somos la consultora que envía CVs y desaparece: trabajamos como parte de tu equipo.",

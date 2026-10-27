@@ -59,6 +59,8 @@ def step_cliente():
             if not cn.strip() or not sec.strip():
                 st.error("Empresa y sector obligatorios.")
             else:
+                cn = cn.strip()
+                cn = cn[0].upper() + cn[1:] if cn else cn
                 st.session_state.form.update({
                     "client_name": cn, "sector": sec, "country": ctr,
                     "size": sz, "client_website": web,
