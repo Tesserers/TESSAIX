@@ -1,11 +1,12 @@
 """Paso 5: revisión y edición del contenido ANTES de generar.
 
-En Human Capital, esta pantalla es la salvaguarda: nada se escribe en el
-.pptx sin que antes se haya visto en pantalla —y se haya podido corregir a
-mano si hace falta— el texto exacto que va a llevar cada slide. En Human
-Capital + Finance el contenido de las diapositivas de servicio es fijo (por
-diseño, ver conversación con el equipo), así que aquí solo se repasan las
-decisiones estructurales (equipo, sedes, fee) antes de generar.
+Esta pantalla es la salvaguarda: nada se escribe en el .pptx sin que antes
+se haya visto en pantalla —y se haya podido corregir a mano si hace
+falta— el texto exacto que va a llevar cada slide. Human Capital + Finance
+genera el mismo tipo de contenido por IA que Human Capital (por qué
+Tessera + la frase de apertura de cada servicio) — las tarjetas de
+servicio con cifras concretas (93% de éxito, 30% de ahorro…) son
+afirmaciones fijas de la empresa y no se tocan.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import io
 
 import streamlit as st
 
-from .ai_content import generate_content
+from .ai_content import generate_content, generate_content_hc_finance
 from .config import BUSINESS_LINE_HC_FINANCE, SERVICES_HC, STEP_CONTEXTO, STEP_GENERATE
 from .logo_client import MIN_LOGO_DIM, checkerboard_preview, fetch_client_logo, logo_quality_label, normalize_domain
 
@@ -59,23 +60,34 @@ _SERVICE_FIELDS = {
 }
 
 
+_HCF_INTRO_SECTIONS = {
+    "para_el_fondo": "Para el fondo",
+    "finance": "Finance",
+    "human_capital": "Human Capital",
+}
+
+
 def _clear_content_widget_keys():
     """
-    Los widgets de `_render_content_editor` usan `key=` fijas (`why_d1_title`,
-    `headhunting_headline`, …) para que Streamlit recuerde lo que el usuario
-    ha tecleado entre reruns. Pero eso significa que, al (re)generar
-    contenido nuevo, Streamlit sigue mostrando el valor ANTIGUO que ya tenía
-    guardado bajo esa key en vez del `value=` recién generado — el cuadro de
-    texto parece "no actualizarse" (o aparecer vacío, si es la primera vez
-    que se pulsa "Generar" tras haber dejado algún campo en blanco antes).
-    Se borran esas keys justo antes de guardar contenido nuevo para que los
-    widgets se construyan limpios en el próximo rerun.
+    Los widgets de `_render_content_editor`/`_render_content_editor_hcf`
+    usan `key=` fijas (`why_d1_title`, `headhunting_headline`, …) para que
+    Streamlit recuerde lo que el usuario ha tecleado entre reruns. Pero eso
+    significa que, al (re)generar contenido nuevo, Streamlit sigue
+    mostrando el valor ANTIGUO que ya tenía guardado bajo esa key en vez
+    del `value=` recién generado — el cuadro de texto parece "no
+    actualizarse" (o aparecer vacío, si es la primera vez que se pulsa
+    "Generar" tras haber dejado algún campo en blanco antes). Se borran
+    esas keys justo antes de guardar contenido nuevo para que los widgets
+    se construyan limpios en el próximo rerun.
     """
     for key, _, _ in _WHY_FIELDS:
         st.session_state.pop(f"why_{key}", None)
+        st.session_state.pop(f"hcf_why_{key}", None)
     for svc, svc_fields in _SERVICE_FIELDS.items():
         for key, _, _ in svc_fields:
             st.session_state.pop(f"{svc}_{key}", None)
+    for section in _HCF_INTRO_SECTIONS:
+        st.session_state.pop(f"hcf_{section}_body", None)
 
 
 def _text_field(container: dict, key: str, label: str, kind: str, widget_key: str):
@@ -108,10 +120,25 @@ def _render_content_editor(data: dict, content: dict):
                 _text_field(svc_content, key, label, kind, f"{svc}_{key}")
 
 
+def _render_content_editor_hcf(content: dict):
+    st.markdown("#### 📝 Contenido de la propuesta")
+    st.caption("Generado a partir de los datos del cliente. Puedes editar cualquier texto antes de generar el PowerPoint.")
+
+    why = content.setdefault("why_tessera", {})
+    with st.expander("Por qué elegir Tessera", expanded=False):
+        for key, label, kind in _WHY_FIELDS:
+            _text_field(why, key, label, kind, f"hcf_why_{key}")
+
+    for section, label in _HCF_INTRO_SECTIONS.items():
+        sec_content = content.setdefault(section, {})
+        with st.expander(label, expanded=False):
+            _text_field(sec_content, "body", "Texto", "area", f"hcf_{section}_body")
+
+
 def _render_structural_summary(data: dict):
-    """Para Human Capital + Finance no hay contenido generado por IA que
-    revisar — el contenido de las diapositivas de servicio es fijo. Aquí
-    solo se repasan las decisiones que sí cambian el .pptx."""
+    """Las decisiones que no son contenido de texto pero también cambian
+    el .pptx (equipo, sedes) — se muestran además del contenido generado
+    por IA, no en su lugar."""
     st.markdown("#### 📋 Resumen antes de generar")
     rows = [
         ("Equipo", "Con Eduardo Serrano" if data.get("include_eduardo") else "Sin Eduardo Serrano"),
@@ -119,10 +146,6 @@ def _render_structural_summary(data: dict):
     ]
     html_r = "".join(f'<div class="sr"><span class="sk">{k}</span><span class="sv">{v}</span></div>' for k, v in rows)
     st.markdown(f'<div class="sum">{html_r}</div>', unsafe_allow_html=True)
-    st.caption(
-        "El contenido de las diapositivas de servicio (Finance, Human Capital, Por qué Tessera) "
-        "es fijo en las propuestas de Human Capital + Finance."
-    )
 
 
 def _render_logo_section(data: dict):
@@ -175,6 +198,7 @@ def _render_logo_section(data: dict):
 def step_review():
     data = st.session_state.form
     is_hc_finance = data.get("business_line") == BUSINESS_LINE_HC_FINANCE
+    generate = generate_content_hc_finance if is_hc_finance else generate_content
 
     st.markdown("### Revisión antes de generar")
     st.caption(
@@ -185,25 +209,13 @@ def step_review():
     _render_logo_section(data)
 
     if is_hc_finance:
-        if st.session_state.content is None:
-            st.session_state.content = {}
         _render_structural_summary(data)
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        cb, cn_ = st.columns([1, 4])
-        with cb:
-            if st.button("← Atrás"):
-                st.session_state.step = STEP_CONTEXTO
-                st.rerun()
-        with cn_:
-            if st.button("Continuar → Generar PPTX", use_container_width=True):
-                st.session_state.step = STEP_GENERATE
-                st.rerun()
-        return
 
     if st.session_state.content is None:
         st.markdown("Todavía no se ha generado contenido para esta propuesta.")
         if st.button("✦ Generar propuesta", use_container_width=True):
-            c = generate_content(data)
+            c = generate(data)
             if c:
                 _clear_content_widget_keys()
                 st.session_state.content = c
@@ -215,7 +227,10 @@ def step_review():
                 st.rerun()
         return
 
-    _render_content_editor(data, st.session_state.content)
+    if is_hc_finance:
+        _render_content_editor_hcf(st.session_state.content)
+    else:
+        _render_content_editor(data, st.session_state.content)
 
     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
     cb, cr, cn_ = st.columns([1, 1.4, 2.6])
@@ -225,7 +240,7 @@ def step_review():
             st.rerun()
     with cr:
         if st.button("↺ Regenerar propuesta"):
-            c = generate_content(data)
+            c = generate(data)
             if c:
                 _clear_content_widget_keys()
                 st.session_state.content = c

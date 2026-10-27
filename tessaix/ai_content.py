@@ -191,19 +191,86 @@ Devuelve este JSON con contenido REAL y COMPLETO (no placeholders):
             system=system, messages=[{"role": "user", "content": prompt}],
             tools=[_web_search_tool(data)],
         )
-    raw = _text_from_response(msg).strip()
+    content = _parse_json_response(_text_from_response(msg))
+    if content is None:
+        return None
+    content = enforce_length_limits(content)
+    return _restore_client_name_everywhere(content, cn)
+
+
+def _parse_json_response(raw: str) -> dict | None:
+    """Limpia y parsea el JSON que debería devolver el modelo — común a
+    `generate_content` y `generate_content_hc_finance`."""
+    raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     # Limpia claves vacías que a veces cuela el modelo
     raw = re.sub(r',\s*""\s*:', ',"_empty":', raw)
     raw = re.sub(r':\s*,', ': null,', raw)
     try:
-        content = json.loads(raw)
+        return json.loads(raw)
     except Exception as e:
         st.error(f"Error parseando JSON: {e}")
         st.code(raw[:800])
         return None
 
+
+def generate_content_hc_finance(data: dict) -> dict | None:
+    """
+    Equivalente de `generate_content` para Human Capital + Finance: el
+    cliente de estas propuestas es un fondo de inversión (o una de sus
+    participadas), así que el texto generado tiene que reflejar esa
+    relación fondo-participada, no hablar como si fuera un cliente
+    operativo normal. Las tarjetas de servicio con cifras concretas
+    (93% de éxito en financiación, 30% de ahorro, etc.) son afirmaciones
+    de la empresa y se quedan fijas — aquí solo se genera el texto que ya
+    era "de apertura" en cada diapositiva (por qué Tessera, y la frase de
+    intro de "Para el fondo", "Finance" y "Human Capital").
+    """
+    client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+    is_en = data["lang"] == "en"
+    cn, sec = data["client_name"], data["sector"]
+
+    system = (SYSTEM_EN if is_en else SYSTEM_ES).format(
+        name_rule=_name_rule_en(cn) if is_en else _name_rule_es(cn)
+    )
+
+    prompt = f"""Genera JSON para una propuesta comercial de Tessera (Finance + Human Capital) para:
+CLIENTE: {cn}
+SECTOR: {sec}
+PAÍS: {data.get('country', 'España')}
+INFO ADICIONAL: {data.get('extra_info', '')}
+
+IMPORTANTE: el cliente de esta propuesta es un FONDO DE INVERSIÓN (o una de sus empresas
+participadas) del sector "{sec}" — todos los textos deben reflejar esa relación fondo-participada
+(due diligence, creación de valor durante la inversión, preparación de la venta…), nunca hablar
+como si {cn} fuera un cliente operativo cualquiera sin ese contexto de inversión. El nombre
+"{cn}" debe escribirse siempre exactamente igual, sin cambiar ni una letra.
+
+Devuelve este JSON con contenido REAL y COMPLETO (no placeholders):
+{{
+  "why_tessera": {{
+    "d1_title": "título diferenciador 1 (1-2 palabras, en la línea de 'Control')",
+    "d1_body": "descripción 2-3 líneas específica para un fondo invirtiendo en {sec}",
+    "d2_title": "título diferenciador 2 (en la línea de 'Rigor financiero')",
+    "d2_body": "descripción 2-3 líneas",
+    "d3_title": "título diferenciador 3 (en la línea de 'Ejecución')",
+    "d3_body": "descripción 2-3 líneas"
+  }},
+  "para_el_fondo": {{"body": "una frase (máx 150 caracteres) sobre cómo Finance y Human Capital trabajan juntos para un fondo en {sec}"}},
+  "finance": {{"body": "una frase (máx 150 caracteres) sobre el ciclo financiero de una participada en {sec}, desde la due diligence hasta la salida"}},
+  "human_capital": {{"body": "una frase (máx 150 caracteres) sobre el talento y los equipos directivos en una participada de {sec}"}}
+}}"""
+
+    with st.spinner("Buscando información del cliente y generando contenido..."):
+        msg = client.messages.create(
+            model="claude-sonnet-4-6", max_tokens=2000,
+            system=system, messages=[{"role": "user", "content": prompt}],
+            tools=[_web_search_tool(data)],
+        )
+    content = _parse_json_response(_text_from_response(msg))
+    if content is None:
+        return None
     content = enforce_length_limits(content)
     return _restore_client_name_everywhere(content, cn)
 

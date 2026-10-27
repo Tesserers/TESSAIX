@@ -90,6 +90,7 @@ HC_SERVICE_SLIDES = {"headhunting": "slide7.xml", "outsourcing": "slide8.xml",
 # Human Capital + Finance no tiene ningún flujo de fee/honorarios ni de
 # términos y condiciones (el archivo real nunca los trajo).
 HCF_TEAM_SLIDES = {"no_eduardo": "slide3.xml", "con_eduardo": "slide4.xml"}
+HCF_SLIDES_DYNAMIC_TEXT = ["slide5.xml", "slide6.xml", "slide7.xml", "slide8.xml"]
 
 # Texto exacto (tal y como está en la plantilla real) del bloque de
 # garantía y de la firma — solo en plantilla_hc.pptx, la única con flujo
@@ -616,14 +617,52 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
 def _build_hc_finance(data: dict, content: dict, unpack: Path) -> None:
     # Human Capital + Finance no tiene ningún flujo de fee/honorarios ni de
     # términos y condiciones (el archivo real nunca los trajo) y tampoco
-    # alternativa de sedes (decisión del equipo) — el contenido es fijo,
-    # solo cambia el equipo.
+    # alternativa de sedes (decisión del equipo) — solo cambian el equipo y,
+    # ahora, el mismo tipo de contenido generado por IA que en Human
+    # Capital (por qué Tessera + la frase de apertura de cada servicio).
+    slides = unpack / "ppt" / "slides"
+    r = replace_text_and_fit
+
     _build_index_and_context(data, unpack, _HCF_DONOR)
 
     include_eduardo = bool(data.get("include_eduardo"))
     drop_team = HCF_TEAM_SLIDES["no_eduardo" if include_eduardo else "con_eduardo"]
 
     _remove_slides(unpack, [drop_team])
+
+    why = content.get("why_tessera", {})
+    if why:
+        s = _read(slides / "slide8.xml")
+        if why.get("d1_title"): s = _replace_title_push_body(s, "Control", why["d1_title"], 10, 11, _WHY_TITLE_CEILING_PT)
+        if why.get("d1_body"):  s = r(s, "Visibilidad real del fondo sobre cada participada: reporting homogéneo, cuadro de mando y seguimiento de caja.", why["d1_body"], grow_ceiling_pt=_WHY_BODY_CEILING_PT)
+        if why.get("d2_title"): s = _replace_title_push_body(s, "Rigor financiero", why["d2_title"], 14, 15, _WHY_TITLE_CEILING_PT)
+        if why.get("d2_body"):  s = r(s, "Metodología de Big Four y de CFOs en activo: información validada y decisiones basadas en datos.", why["d2_body"], grow_ceiling_pt=_WHY_BODY_CEILING_PT)
+        if why.get("d3_title"): s = _replace_title_push_body(s, "Ejecución", why["d3_title"], 18, 19, _WHY_TITLE_CEILING_PT)
+        if why.get("d3_body"):  s = r(s, "No nos quedamos en el diagnóstico: implantamos, acompañamos al equipo directivo y medimos el resultado.", why["d3_body"], grow_ceiling_pt=_WHY_BODY_CEILING_PT)
+        _write(slides / "slide8.xml", s)
+
+    para_el_fondo = content.get("para_el_fondo", {})
+    if para_el_fondo.get("body"):
+        s = _read(slides / "slide5.xml")
+        s = r(s, "Finance y Human Capital en un mismo equipo, en cada fase del ciclo de inversión.", para_el_fondo["body"])
+        _write(slides / "slide5.xml", s)
+
+    finance = content.get("finance", {})
+    if finance.get("body"):
+        s = _read(slides / "slide6.xml")
+        s = r(s, "Todo el ciclo financiero de una participada, desde la due diligence hasta la salida.", finance["body"])
+        _write(slides / "slide6.xml", s)
+
+    human_capital = content.get("human_capital", {})
+    if human_capital.get("body"):
+        s = _read(slides / "slide7.xml")
+        s = r(s, "Expertos en el flujo de talento: procesos claros y compromisos que se cumplen.", human_capital["body"])
+        _write(slides / "slide7.xml", s)
+
+    for name in HCF_SLIDES_DYNAMIC_TEXT:
+        path = slides / name
+        if path.exists():
+            _write(path, enable_shrink_autofit(_read(path)))
 
 
 # ─── LOGO DEL CLIENTE (portada + cierre) ──────────────────────────────────
