@@ -43,12 +43,14 @@ from .ai_content import generate_context_paragraph
 from .config import BUSINESS_LINE_HC_FINANCE, PLANTILLA_HC, PLANTILLA_HC_FINANCE, SERVICES_HC
 from .logo_client import compose_logo_for_placeholder
 from .team import LOCATIONS_MADRID_ONLY
+from .text_fit import pt_to_emu as pt
 from .xml_utils import (
     center_vertical_anchor,
     enable_shrink_autofit,
     find_pic_embed_rid,
     get_picture_frame_emu,
     get_shape_ext_emu,
+    grow_shape_by,
     remove_content_type_override,
     remove_relationship,
     remove_shape_by_id,
@@ -57,6 +59,7 @@ from .xml_utils import (
     replace_text_in_xml,
     resolve_rel_target,
     resolve_rid_for_target,
+    set_shape_pos,
     set_shape_text_color,
     shift_shape_y,
 )
@@ -76,6 +79,21 @@ from .xml_utils import (
 HC_SLIDES_DYNAMIC_TEXT = ["slide5.xml", "slide7.xml", "slide8.xml", "slide9.xml", "slide10.xml"]
 HC_LOCATION_SLIDES = {"all": "slide4.xml", "madrid": "slide4b.xml"}
 HC_TEAM_SLIDES = {"sin_eduardo": "slide2.xml", "con_eduardo": "slide3.xml"}
+# El equipo ya no es un interruptor con/sin Eduardo: se elige QUIÉN sale,
+# persona a persona (ver conversación) — slide2.xml (la variante estática
+# de 2 personas) ya no se usa nunca; slide3.xml (el superconjunto de 3) es
+# la única base, de la que se podan y recolocan los bloques persona a
+# persona según quién se haya elegido. Si no se elige a nadie, no hay
+# diapositiva de equipo.
+HC_TEAM_SLIDE = "slide3.xml"
+HC_TEAM_PEOPLE_ORDER = ["eduardo", "manuel", "edward"]
+HC_TEAM_PEOPLE_SHAPES = {
+    "eduardo": (9, 10, 11, 12),
+    "manuel": (13, 14, 15, 16),
+    "edward": (17, 18, 19, 20),
+}
+HC_TEAM_PEOPLE_LABELS = {"eduardo": "Eduardo Serrano", "manuel": "Manuel Pina", "edward": "Edward Manrique"}
+HC_TEAM_X_RANGE = (pt(43), pt(647))
 HC_NEXT_STEPS_SLIDE = "slide12.xml"
 HC_TERMS_SLIDES = ["slide13.xml", "slide14.xml"]
 HC_FEE_SLIDE = "slide15.xml"
@@ -91,6 +109,22 @@ HC_SERVICE_SLIDES = {"headhunting": "slide7.xml", "outsourcing": "slide8.xml",
 # Human Capital + Finance no tiene ningún flujo de fee/honorarios ni de
 # términos y condiciones (el archivo real nunca los trajo).
 HCF_TEAM_SLIDES = {"no_eduardo": "slide3.xml", "con_eduardo": "slide4.xml"}
+# Mismo cambio que en Human Capital: slide3.xml (la variante estática de 3
+# sin Eduardo) ya no se usa nunca; slide4.xml (el superconjunto de 4) es la
+# única base.
+HCF_TEAM_SLIDE = "slide4.xml"
+HCF_TEAM_PEOPLE_ORDER = ["manuel", "eduardo", "monica", "edward"]
+HCF_TEAM_PEOPLE_SHAPES = {
+    "manuel": (8, 9, 10, 11),
+    "eduardo": (12, 13, 14, 15),
+    "monica": (16, 17, 18, 19),
+    "edward": (20, 21, 22, 23),
+}
+HCF_TEAM_PEOPLE_LABELS = {
+    "manuel": "Manuel Pina", "eduardo": "Eduardo Serrano",
+    "monica": "Mónica Mayoral", "edward": "Edward Manrique",
+}
+HCF_TEAM_X_RANGE = (pt(43), pt(723))
 HCF_SLIDES_DYNAMIC_TEXT = ["slide5.xml", "slide6.xml", "slide7.xml", "slide8.xml"]
 
 # Texto exacto (tal y como está en la plantilla real) del bloque de
@@ -178,12 +212,13 @@ _INFO_SLIDE_PAGE_NUM_COLOR = "202031"
 # con dos párrafos) — así es como vienen en el archivo real.
 #
 # En Headhunting el hueco entre una forma y la siguiente es mínimo (están
-# pensadas para un título de una palabra y una frase corta): el tope de
-# crecimiento es el propio alto de fábrica, así que nunca crecen —
-# cualquier texto más largo se encoge en vez de arriesgarse a pisar la
-# forma de abajo.
-_HH_TITLE_CEILING_PT = 18.0
-_HH_BODY_CEILING_PT = 40.0
+# pensadas para un título de una palabra y una frase corta), pero como
+# cada columna se sustituye con `_grow_cascade` (ver más abajo), un título
+# o cuerpo que de verdad necesite más espacio empuja hacia abajo todo lo
+# que tenga debajo en su misma columna — así puede crecer de verdad sin
+# arriesgarse a pisar la forma de abajo.
+_HH_TITLE_CEILING_PT = 50.0
+_HH_BODY_CEILING_PT = 90.0
 
 # En "Así vamos a trabajar juntos" el título SÍ tiene hueco de sobra de
 # fábrica (pensado para 1-2 líneas), así que se le deja crecer un poco más
@@ -335,11 +370,30 @@ def _renumber_visible_pages(pptx_bytes: bytes) -> bytes:
 
 
 # ─── ÍNDICE Y CONTEXTO (compartido) ────────────────────────────────────
+# El "Loop" (manual de marca): una línea fina con un degradado de 2 colores
+# (Teal → Navy), usada como detalle decorativo breve — aquí, un acento bajo
+# el título de Índice para que no quede una diapositiva tan desnuda como
+# una simple lista. Es el único adorno aprobado de marca (nada de sombras,
+# brillos ni círculos difuminados), así que se reutiliza tal cual.
+def _loop_accent_xml(shape_id: int, x_pt: float, y_pt: float, w_pt: float, h_pt: float) -> str:
+    x, y, w, h = (pt(v) for v in (x_pt, y_pt, w_pt, h_pt))
+    return (
+        f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Loop"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        f'<p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm>'
+        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+        f'<a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="587579"/></a:gs>'
+        f'<a:gs pos="100000"><a:srgbClr val="202031"/></a:gs></a:gsLst><a:lin ang="0" scaled="1"/></a:gradFill>'
+        f'<a:ln><a:noFill/></a:ln></p:spPr>'
+        f'<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>'
+    )
+
+
 def _build_info_slide(
     unpack: Path, donor: dict, new_slide_file: str, insert_after_file: str,
     eyebrow: str, title: str, body: str,
     body_base_scale: float = 1.0, body_min_font_pt: float | None = None,
     body_preset_height_pt: float | None = None,
+    flourish: bool = False,
 ) -> None:
     _duplicate_slide(unpack, donor["slide"], new_slide_file, insert_after_file)
     path = unpack / "ppt" / "slides" / new_slide_file
@@ -359,22 +413,31 @@ def _build_info_slide(
     )
     s = enable_shrink_autofit(s)
     s = set_shape_text_color(s, _INFO_SLIDE_PAGE_NUM_ID, _INFO_SLIDE_PAGE_NUM_COLOR)
+    if flourish:
+        s = s.replace("</p:spTree>", _loop_accent_xml(900, 200, 92, 90, 4) + "</p:spTree>")
     _write(path, s)
 
 
 def _index_items(data: dict) -> list[str]:
     is_hc_finance = data.get("business_line") == BUSINESS_LINE_HC_FINANCE
     include_fee = data.get("deck_type") == "propuesta"
+    default_people = HCF_TEAM_PEOPLE_ORDER if is_hc_finance else HC_TEAM_PEOPLE_ORDER
+    has_team = bool(data.get("team_people", default_people))
     if is_hc_finance:
         # Human Capital + Finance ya no tiene flujo de fee: su índice nunca
         # incluye "Honorarios".
-        items = [
-            "Contexto", "Tessera en una página", "Nuestro equipo",
+        items = ["Contexto", "Tessera en una página"]
+        if has_team:
+            items.append("Nuestro equipo")
+        items += [
             "Para el fondo", "Servicios Finance", "Servicios Human Capital",
             "Por qué Tessera", "Confían en nosotros", "Contacto",
         ]
     else:
-        items = ["Contexto", "Nuestro equipo", "Dónde estamos", "Por qué Tessera", "Cómo trabajamos"]
+        items = ["Contexto"]
+        if has_team:
+            items.append("Nuestro equipo")
+        items += ["Dónde estamos", "Por qué Tessera", "Cómo trabajamos"]
         items += [SERVICES_HC.get(s, s) for s in data.get("services", [])]
         if include_fee:
             items += ["Próximos pasos", "Honorarios"]
@@ -397,6 +460,7 @@ def _build_index_and_context(data: dict, unpack: Path, donor: dict) -> None:
             eyebrow="NOSOTROS", title="Índice", body=index_body,
             body_base_scale=_CLONE_BODY_BASE_SCALE, body_min_font_pt=_CLONE_BODY_MIN_FONT_PT,
             body_preset_height_pt=_CLONE_BODY_PRESET_HEIGHT_PT,
+            flourish=True,
         )
         context_insert_after = _INDEX_SLIDE_FILE
 
@@ -529,6 +593,72 @@ def _replace_title_push_body(
     return slide_xml
 
 
+def _grow_cascade(slide_xml: str, items: list[tuple[str | None, str | None, int, str, float]]) -> tuple[str, int]:
+    """
+    Varios pares título+cuerpo APILADOS en la misma columna (p.ej. las 3
+    filas de una tarjeta de Headhunting): `items` es esa columna de arriba
+    a abajo, como (old, new, shape_id, role, grow_ceiling_pt). Si una forma
+    crece (texto de IA más largo de lo habitual), TODAS las que vienen
+    después se desplazan hacia abajo lo mismo — si no, un título o cuerpo
+    largo se comería la forma de debajo. `new` puede ser None (texto fijo,
+    no se sustituye) y aun así participa de la cadena de desplazamiento.
+    Devuelve también el desplazamiento TOTAL acumulado (en EMU) — quien
+    llama lo necesita para agrandar la tarjeta de fondo y empujar lo que
+    venga después de la columna entera (ver _build_hc, Headhunting).
+    """
+    pending = [it[2] for it in items]
+    total_delta = 0
+    for old, new, shape_id, role, ceiling_pt in items:
+        pending.pop(0)
+        if not new:
+            continue
+        before = get_shape_ext_emu(slide_xml, shape_id)
+        slide_xml = replace_text_and_fit(slide_xml, old, new, role=role, grow_ceiling_pt=ceiling_pt)
+        after = get_shape_ext_emu(slide_xml, shape_id)
+        if before and after and after[1] > before[1]:
+            delta = after[1] - before[1]
+            total_delta += delta
+            for pid in pending:
+                slide_xml = shift_shape_y(slide_xml, pid, delta)
+    return slide_xml, total_delta
+
+
+def _even_slot_positions(first_emu: int, last_emu: int, n: int) -> list[int]:
+    """n posiciones X repartidas uniformemente entre `first_emu` y
+    `last_emu` (los dos huecos de los extremos del equipo al completo) —
+    con 1 persona, el centro; con 2, los dos extremos; con el nº total de
+    personas, las posiciones nativas de la plantilla."""
+    if n <= 1:
+        return [(first_emu + last_emu) // 2]
+    step = (last_emu - first_emu) / (n - 1)
+    return [round(first_emu + i * step) for i in range(n)]
+
+
+def _build_team_slide(
+    unpack: Path, slide_file: str, people_order: list[str], people_shapes: dict[str, tuple[int, ...]],
+    x_range: tuple[int, int], selected: set[str] | list[str],
+) -> None:
+    """
+    Pone en la diapositiva de equipo (`slide_file`, el superconjunto con
+    TODAS las personas) solo a quien esté en `selected` — se quita el
+    bloque (foto + nombre + cargo + bio) de quien no esté, y a quien se
+    queda se le recoloca en el hueco que le toque según cuántos haya en
+    total (ver _even_slot_positions), siempre en el mismo orden
+    (`people_order`) sea cual sea el orden en que se hayan elegido.
+    """
+    canonical = [p for p in people_order if p in selected]
+    path = unpack / "ppt" / "slides" / slide_file
+    s = _read(path)
+    for p in people_order:
+        if p not in canonical:
+            for shape_id in people_shapes[p]:
+                s = remove_shape_by_id(s, shape_id)
+    for p, x in zip(canonical, _even_slot_positions(x_range[0], x_range[1], len(canonical))):
+        for shape_id in people_shapes[p]:
+            s = set_shape_pos(s, shape_id, x_emu=x)
+    _write(path, s)
+
+
 # ─── HUMAN CAPITAL (solo) ──────────────────────────────────────────────
 def _build_hc(data: dict, content: dict, unpack: Path) -> None:
     slides = unpack / "ppt" / "slides"
@@ -536,17 +666,21 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
 
     _build_index_and_context(data, unpack, _HC_DONOR)
 
+    include_fee = data.get("deck_type") == "propuesta"
     show_all_locations = data.get("locations", "all") != LOCATIONS_MADRID_ONLY
     drop_location = HC_LOCATION_SLIDES["madrid" if show_all_locations else "all"]
+    # slide2.xml (la variante estática de 2 personas) ya no se usa nunca —
+    # el equipo ahora siempre sale de slide3.xml, podado persona a persona.
+    _remove_slides(unpack, [drop_location, HC_TEAM_SLIDES["sin_eduardo"]])
 
-    include_fee = data.get("deck_type") == "propuesta"
-    # Equipo: elección visible en el wizard (con valor por defecto según el
-    # tipo de propuesta — sin fee con Eduardo Serrano, con fee sin él — pero
-    # editable, no una decisión oculta).
-    include_eduardo = bool(data.get("include_eduardo", not include_fee))
-    drop_team = HC_TEAM_SLIDES["sin_eduardo" if include_eduardo else "con_eduardo"]
-
-    _remove_slides(unpack, [drop_location, drop_team])
+    # Equipo: se elige QUIÉN sale, persona a persona (por defecto, todo el
+    # mundo, igual que el resto de diapositivas) — si no se elige a nadie,
+    # no hay diapositiva de equipo.
+    team_people = set(data.get("team_people", HC_TEAM_PEOPLE_ORDER))
+    if not team_people:
+        _remove_slides(unpack, [HC_TEAM_SLIDE])
+    else:
+        _build_team_slide(unpack, HC_TEAM_SLIDE, HC_TEAM_PEOPLE_ORDER, HC_TEAM_PEOPLE_SHAPES, HC_TEAM_X_RANGE, team_people)
 
     why = content.get("why_tessera", {})
     svcs = content.get("services", {})
@@ -569,26 +703,51 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
         _write(slides / "slide5.xml", s)
 
     # ── Headhunting ──────────────────────────────────────────────────
-    # 3 columnas, cada una con 3 pares título+cuerpo apilados — aquí el
-    # hueco de fábrica es mínimo (pensado para una palabra y una frase
-    # corta), así que el tope de crecimiento es el propio alto de fábrica:
-    # nunca crecen, cualquier texto más largo se encoge en su sitio.
+    # 3 columnas, cada una con 3 pares título+cuerpo apilados y un hueco de
+    # fábrica mínimo entre uno y el siguiente — se sustituyen con
+    # _grow_cascade para que, si un título o cuerpo necesita de verdad más
+    # espacio, empuje hacia abajo todo lo que tenga debajo en su columna en
+    # vez de solaparse con ello.
     ht, hb = _HH_TITLE_CEILING_PT, _HH_BODY_CEILING_PT
     if "headhunting" in services and svcs.get("headhunting"):
         hh = svcs["headhunting"]
         s = _read(slides / "slide7.xml")
-        if hh.get("why_col_title1"): s = r(s, "VELOCIDAD", hh["why_col_title1"], role="title", grow_ceiling_pt=ht)
-        if hh.get("why_col_body1"):  s = r(s, "Disponemos de nuestra propia metodología, la cual nos permite presentar candidatos a tiempo.", hh["why_col_body1"], grow_ceiling_pt=hb)
-        if hh.get("why_col_title2"): s = r(s, "ESPECIALIZACIÓN", hh["why_col_title2"], role="title", grow_ceiling_pt=ht)
-        if hh.get("why_col_body2"):  s = r(s, "Conocemos tu sector y cómo se construyen sus equipos.", hh["why_col_body2"], grow_ceiling_pt=hb)
-        if hh.get("why_col_title3"): s = r(s, "ÉXITO COMPARTIDO", hh["why_col_title3"], role="title", grow_ceiling_pt=ht)
-        if hh.get("why_col_body3"):  s = r(s, "El equipo que lleva tu negocio al siguiente nivel.", hh["why_col_body3"], grow_ceiling_pt=hb)
-        if hh.get("benefits_body1"): s = r(s, "Nos ocupamos de todo. Tú solo conoces a los mejores.", hh["benefits_body1"], grow_ceiling_pt=hb)
-        if hh.get("benefits_body2"): s = r(s, "Candidatos que no solo encajan: impulsan tu crecimiento.", hh["benefits_body2"], grow_ceiling_pt=hb)
-        if hh.get("benefits_body3"): s = r(s, "Tu éxito es también el nuestro.", hh["benefits_body3"], grow_ceiling_pt=hb)
-        if hh.get("how_body3"): s = r(s, "Habilidades, actitud y encaje cultural.", hh["how_body3"], grow_ceiling_pt=hb)
-        if hh.get("how_body4"): s = r(s, "Únicamente candidatos que realmente suman.", hh["how_body4"], grow_ceiling_pt=hb)
-        if hh.get("how_body5"): s = r(s, "Contigo también después de la incorporación.", hh["how_body5"], grow_ceiling_pt=hb)
+        s, d1 = _grow_cascade(s, [
+            ("VELOCIDAD", hh.get("why_col_title1"), 10, "title", ht),
+            ("Disponemos de nuestra propia metodología, la cual nos permite presentar candidatos a tiempo.", hh.get("why_col_body1"), 11, "body", hb),
+            ("ESPECIALIZACIÓN", hh.get("why_col_title2"), 12, "title", ht),
+            ("Conocemos tu sector y cómo se construyen sus equipos.", hh.get("why_col_body2"), 13, "body", hb),
+            ("ÉXITO COMPARTIDO", hh.get("why_col_title3"), 14, "title", ht),
+            ("El equipo que lleva tu negocio al siguiente nivel.", hh.get("why_col_body3"), 15, "body", hb),
+        ])
+        s, d2 = _grow_cascade(s, [
+            (None, None, 19, "title", ht),  # CERO ESTRÉS (título fijo)
+            ("Nos ocupamos de todo. Tú solo conoces a los mejores.", hh.get("benefits_body1"), 20, "body", hb),
+            (None, None, 21, "title", ht),  # TALENTO A MEDIDA (título fijo)
+            ("Candidatos que no solo encajan: impulsan tu crecimiento.", hh.get("benefits_body2"), 22, "body", hb),
+            (None, None, 23, "title", ht),  # RELACIÓN A LARGO PLAZO (título fijo)
+            ("Tu éxito es también el nuestro.", hh.get("benefits_body3"), 24, "body", hb),
+        ])
+        s, d3 = _grow_cascade(s, [
+            (None, None, 28, "title", ht),  # ELEGIMOS CON PRECISIÓN (título fijo)
+            ("Habilidades, actitud y encaje cultural.", hh.get("how_body3"), 29, "body", hb),
+            (None, None, 30, "title", ht),  # SOLO LO MEJOR (título fijo)
+            ("Únicamente candidatos que realmente suman.", hh.get("how_body4"), 31, "body", hb),
+            (None, None, 32, "title", ht),  # ACOMPAÑAMOS EL PROCESO (título fijo)
+            ("Contigo también después de la incorporación.", hh.get("how_body5"), 33, "body", hb),
+        ])
+        # Las 3 tarjetas de fondo (ids 7/16/25) son formas fijas, aparte del
+        # texto: si una columna ha crecido, su tarjeta crece con ella — y la
+        # banda de estadística de debajo (ids 34-40, el número de página 41
+        # aparte) se desplaza lo que haya crecido la columna que más creció,
+        # para no quedar pisada por ninguna de las tres.
+        s = grow_shape_by(s, 7, d1)
+        s = grow_shape_by(s, 16, d2)
+        s = grow_shape_by(s, 25, d3)
+        band_push = max(d1, d2, d3)
+        if band_push:
+            for pid in (34, 35, 36, 37, 38, 39, 40):
+                s = shift_shape_y(s, pid, band_push)
         _write(slides / "slide7.xml", s)
 
     # ── Outsourcing ──────────────────────────────────────────────────
@@ -650,10 +809,15 @@ def _build_hc_finance(data: dict, content: dict, unpack: Path) -> None:
 
     _build_index_and_context(data, unpack, _HCF_DONOR)
 
-    include_eduardo = bool(data.get("include_eduardo"))
-    drop_team = HCF_TEAM_SLIDES["no_eduardo" if include_eduardo else "con_eduardo"]
-
-    _remove_slides(unpack, [drop_team])
+    # slide3.xml (la variante estática de 3 personas sin Eduardo) ya no se
+    # usa nunca — el equipo siempre sale de slide4.xml, podado persona a
+    # persona (ver _build_hc, mismo mecanismo).
+    _remove_slides(unpack, [HCF_TEAM_SLIDES["no_eduardo"]])
+    team_people = set(data.get("team_people", HCF_TEAM_PEOPLE_ORDER))
+    if not team_people:
+        _remove_slides(unpack, [HCF_TEAM_SLIDE])
+    else:
+        _build_team_slide(unpack, HCF_TEAM_SLIDE, HCF_TEAM_PEOPLE_ORDER, HCF_TEAM_PEOPLE_SHAPES, HCF_TEAM_X_RANGE, team_people)
 
     why = content.get("why_tessera", {})
     if why:

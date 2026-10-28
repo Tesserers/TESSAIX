@@ -5,6 +5,10 @@ from .config import (
     BUSINESS_LINE_HC, BUSINESS_LINE_HC_FINANCE, BUSINESS_LINES, SERVICES_HC,
     STEP_CLIENTE, STEP_CONTEXTO, STEP_EQUIPO, STEP_REVIEW, STEP_SERVICIOS,
 )
+from .pptx_builder import (
+    HC_TEAM_PEOPLE_LABELS, HC_TEAM_PEOPLE_ORDER,
+    HCF_TEAM_PEOPLE_LABELS, HCF_TEAM_PEOPLE_ORDER,
+)
 from .team import WARRANTY_MONTHS_OPTIONS
 
 
@@ -99,19 +103,17 @@ def step_equipo():
 
     st.markdown("### Equipo y sedes")
 
-    if is_hc_finance:
-        st.caption(
-            "El equipo de esta propuesta siempre incluye a Manuel Pina, "
-            "Mónica Mayoral y Edward Manrique."
-        )
-        default_eduardo = data.get("include_eduardo", False)
-    else:
-        # Por defecto, sin fee va con Eduardo Serrano y con fee va sin él
-        # (de momento) — pero sigue siendo una elección visible y editable,
-        # no una decisión oculta.
-        st.caption("Equipo de esta propuesta: Manuel Pina y Edward Manrique, con o sin Eduardo Serrano.")
-        default_eduardo = data.get("include_eduardo", data.get("deck_type") != "propuesta")
-    include_eduardo = st.checkbox("Incluir también a Eduardo Serrano", value=default_eduardo)
+    people_order = HCF_TEAM_PEOPLE_ORDER if is_hc_finance else HC_TEAM_PEOPLE_ORDER
+    people_labels = HCF_TEAM_PEOPLE_LABELS if is_hc_finance else HC_TEAM_PEOPLE_LABELS
+    st.markdown("#### Quién sale en el equipo")
+    st.caption("Por defecto salen todos — si no eliges a nadie, la propuesta no lleva diapositiva de equipo.")
+    default_people = data.get("team_people", people_order)
+    selected_labels = st.multiselect(
+        "Equipo", [people_labels[p] for p in people_order],
+        default=[people_labels[p] for p in people_order if p in default_people],
+        label_visibility="collapsed",
+    )
+    team_people = [p for p in people_order if people_labels[p] in selected_labels]
 
     st.markdown("---")
     st.markdown("#### Sedes a mostrar")
@@ -140,7 +142,7 @@ def step_equipo():
     with cn_:
         if st.button("Siguiente →"):
             st.session_state.form.update({
-                "include_eduardo": include_eduardo,
+                "team_people": team_people,
                 "locations": locations,
                 "warranty_months": warranty_months,
             })

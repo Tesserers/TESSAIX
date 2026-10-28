@@ -2,12 +2,20 @@
 import streamlit as st
 
 from .config import BUSINESS_LINE_HC_FINANCE, BUSINESS_LINES, SERVICES_HC, STEP_REVIEW
-from .pptx_builder import build_pptx
+from .pptx_builder import (
+    HC_TEAM_PEOPLE_LABELS, HC_TEAM_PEOPLE_ORDER,
+    HCF_TEAM_PEOPLE_LABELS, HCF_TEAM_PEOPLE_ORDER,
+    build_pptx,
+)
 
 
 def step_generate():
     d = st.session_state.form
     is_hc_finance = d.get("business_line") == BUSINESS_LINE_HC_FINANCE
+    people_order = HCF_TEAM_PEOPLE_ORDER if is_hc_finance else HC_TEAM_PEOPLE_ORDER
+    people_labels = HCF_TEAM_PEOPLE_LABELS if is_hc_finance else HC_TEAM_PEOPLE_LABELS
+    team_people = d.get("team_people", people_order)
+    equipo = ", ".join(people_labels[p] for p in people_order if p in team_people) or "Sin diapositiva de equipo"
 
     st.markdown("### Genera tu PowerPoint")
     rows = [
@@ -20,7 +28,7 @@ def step_generate():
     ]
     if not is_hc_finance:
         rows.append(("Servicios", " · ".join([SERVICES_HC.get(s, s) for s in d.get("services", [])])))
-    rows.append(("Equipo", "Con Eduardo Serrano" if d.get("include_eduardo") else "Sin Eduardo Serrano"))
+    rows.append(("Equipo", equipo))
     if not is_hc_finance and d.get("deck_type") == "propuesta":
         rows.append(("Garantía", f"{d.get('warranty_months', 3)} meses"))
         if d.get("fee_rate"):

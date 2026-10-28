@@ -480,6 +480,60 @@ def shift_shape_y(slide_xml: str, shape_id: int, delta_emu: int) -> str:
     return slide_xml[:m.start()] + new_shape_xml + slide_xml[m.end():]
 
 
+def grow_shape_by(slide_xml: str, shape_id: int, delta_cy_emu: int) -> str:
+    """Aumenta el alto (<a:ext cy="...">) de la forma `shape_id` en
+    `delta_cy_emu`, sin tocar su posición ni su ancho — hace falta cuando
+    el contenido de una columna ha crecido más de lo habitual y la tarjeta
+    de fondo (una forma fija, aparte del texto) tiene que crecer con él."""
+    if delta_cy_emu <= 0:
+        return slide_xml
+    ext = get_shape_ext_emu(slide_xml, shape_id)
+    if not ext:
+        return slide_xml
+    cx, cy = ext
+    pattern = re.compile(
+        r'<p:sp>(?:(?!</p:sp>).)*?<p:cNvPr\b[^>]*\bid="%d"(?:(?!</p:sp>).)*?</p:sp>' % shape_id,
+        re.DOTALL,
+    )
+    m = pattern.search(slide_xml)
+    if not m:
+        return slide_xml
+    shape_xml = m.group(0)
+    new_shape_xml = re.sub(
+        r'<a:ext\s+cx="\d+"\s+cy="\d+"\s*/>', f'<a:ext cx="{cx}" cy="{cy + delta_cy_emu}"/>', shape_xml, count=1,
+    )
+    return slide_xml[:m.start()] + new_shape_xml + slide_xml[m.end():]
+
+
+def set_shape_pos(slide_xml: str, shape_id: int, x_emu: int | None = None, y_emu: int | None = None) -> str:
+    """
+    Fija la posición ABSOLUTA (en vez de desplazar, como `shift_shape_y`) de
+    la forma `shape_id` — cualquier tipo (texto, imagen...), a diferencia de
+    `shift_shape_y` que solo entiende <p:sp>. Si `x_emu` o `y_emu` es None,
+    esa coordenada se deja como estaba. Hace falta para recolocar bloques
+    de persona (foto + texto) en el hueco que les toque según cuántas
+    personas haya seleccionadas en el equipo.
+    """
+    for tag in _REMOVABLE_TAGS:
+        pattern = re.compile(
+            r'<%s\b[^>]*>(?:(?!</%s>).)*?<p:cNvPr\b[^>]*\bid="%d"(?:(?!</%s>).)*?</%s>'
+            % (tag, tag, shape_id, tag, tag),
+            re.DOTALL,
+        )
+        m = pattern.search(slide_xml)
+        if not m:
+            continue
+        shape_xml = m.group(0)
+        off = re.search(r'<a:off\s+x="(-?\d+)"\s+y="(-?\d+)"\s*/>', shape_xml)
+        if not off:
+            return slide_xml
+        x = x_emu if x_emu is not None else int(off.group(1))
+        y = y_emu if y_emu is not None else int(off.group(2))
+        new_shape_xml = shape_xml.replace(off.group(0), f'<a:off x="{x}" y="{y}"/>', 1)
+        return slide_xml[:m.start()] + new_shape_xml + slide_xml[m.end():]
+    return slide_xml
+
+
 # ─── LECTURA DE RELACIONES / MARCOS DE IMAGEN ─────────────────────────────
 def resolve_rel_target(rels_xml: str, rid: str) -> str | None:
     """Devuelve el Target (ruta relativa) de una relación r:id concreta."""

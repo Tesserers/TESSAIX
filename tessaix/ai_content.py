@@ -9,34 +9,6 @@ import streamlit as st
 
 from .config import SERVICES_HC
 
-# Límite duro de caracteres por tipo de campo. Es una red de seguridad
-# adicional al autofit dinámico del .pptx (ver xml_utils.enable_shrink_autofit):
-# el autofit encoge la fuente si el texto no cabe, pero si el modelo se
-# desmadra y devuelve un párrafo larguísimo, es mejor recortarlo con criterio
-# (por palabra completa) que dejar que la fuente se reduzca hasta ser
-# ilegible. Se aplica por prefijo de la clave del campo.
-_LIMITS_BY_SUFFIX = [
-    ("_title", 60),
-    ("headline", 90),
-    ("_body", 220),
-    ("body", 260),
-]
-
-
-def _limit_for_key(key: str) -> int | None:
-    for suffix, limit in _LIMITS_BY_SUFFIX:
-        if key.endswith(suffix):
-            return limit
-    return None
-
-
-def _truncate_wordwise(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    cut = text[:limit].rsplit(" ", 1)[0].rstrip(",.;:")
-    return cut + "…"
-
-
 def _restore_client_name(text: str, client_name: str) -> str:
     """
     El nombre de la empresa cliente NUNCA debe cambiar. A veces el modelo
@@ -63,23 +35,6 @@ def _restore_client_name_everywhere(node, client_name: str):
     if isinstance(node, str):
         return _restore_client_name(node, client_name)
     return node
-
-
-def enforce_length_limits(content: dict) -> dict:
-    """Recorta (por palabra completa) cualquier campo de texto anormalmente
-    largo, para que el autofit del .pptx nunca tenga que encoger la fuente
-    de forma extrema."""
-
-    def _walk(node):
-        if isinstance(node, dict):
-            return {k: _walk(v) if not isinstance(v, str) else _clip(k, v) for k, v in node.items()}
-        return node
-
-    def _clip(key, value):
-        limit = _limit_for_key(key)
-        return _truncate_wordwise(value, limit) if limit else value
-
-    return _walk(content)
 
 
 # Regla común a todos los prompts: el nombre del cliente es intocable. Se
@@ -194,7 +149,6 @@ Devuelve este JSON con contenido REAL y COMPLETO (no placeholders):
     content = _parse_json_response(_text_from_response(msg))
     if content is None:
         return None
-    content = enforce_length_limits(content)
     return _restore_client_name_everywhere(content, cn)
 
 
@@ -271,7 +225,6 @@ Devuelve este JSON con contenido REAL y COMPLETO (no placeholders):
     content = _parse_json_response(_text_from_response(msg))
     if content is None:
         return None
-    content = enforce_length_limits(content)
     return _restore_client_name_everywhere(content, cn)
 
 

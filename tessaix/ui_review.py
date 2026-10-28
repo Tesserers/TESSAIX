@@ -17,6 +17,10 @@ import streamlit as st
 from .ai_content import generate_content, generate_content_hc_finance
 from .config import BUSINESS_LINE_HC_FINANCE, SERVICES_HC, STEP_CONTEXTO, STEP_GENERATE
 from .logo_client import MIN_LOGO_DIM, checkerboard_preview, fetch_client_logo, logo_quality_label, normalize_domain
+from .pptx_builder import (
+    HC_TEAM_PEOPLE_LABELS, HC_TEAM_PEOPLE_ORDER,
+    HCF_TEAM_PEOPLE_LABELS, HCF_TEAM_PEOPLE_ORDER,
+)
 
 _WHY_FIELDS = [
     ("d1_title", "Título diferenciador 1", "input"),
@@ -139,9 +143,15 @@ def _render_structural_summary(data: dict):
     """Las decisiones que no son contenido de texto pero también cambian
     el .pptx (equipo, sedes) — se muestran además del contenido generado
     por IA, no en su lugar."""
+    is_hc_finance = data.get("business_line") == BUSINESS_LINE_HC_FINANCE
+    people_order = HCF_TEAM_PEOPLE_ORDER if is_hc_finance else HC_TEAM_PEOPLE_ORDER
+    people_labels = HCF_TEAM_PEOPLE_LABELS if is_hc_finance else HC_TEAM_PEOPLE_LABELS
+    team_people = data.get("team_people", people_order)
+    equipo = ", ".join(people_labels[p] for p in people_order if p in team_people) or "Sin diapositiva de equipo"
+
     st.markdown("#### 📋 Resumen antes de generar")
     rows = [
-        ("Equipo", "Con Eduardo Serrano" if data.get("include_eduardo") else "Sin Eduardo Serrano"),
+        ("Equipo", equipo),
         ("Sedes", "Las 3 sedes" if data.get("locations", "all") == "all" else "Solo Madrid"),
     ]
     html_r = "".join(f'<div class="sr"><span class="sk">{k}</span><span class="sv">{v}</span></div>' for k, v in rows)
