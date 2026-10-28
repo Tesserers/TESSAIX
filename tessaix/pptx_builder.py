@@ -370,22 +370,67 @@ def _renumber_visible_pages(pptx_bytes: bytes) -> bytes:
 
 
 # ─── ÍNDICE Y CONTEXTO (compartido) ────────────────────────────────────
-# El "Loop" (manual de marca): una línea fina con un degradado de 2 colores
-# (Teal → Navy), usada como detalle decorativo breve — aquí, un acento bajo
-# el título de Índice para que no quede una diapositiva tan desnuda como
-# una simple lista. Es el único adorno aprobado de marca (nada de sombras,
-# brillos ni círculos difuminados), así que se reutiliza tal cual.
-def _loop_accent_xml(shape_id: int, x_pt: float, y_pt: float, w_pt: float, h_pt: float) -> str:
+# Floritura de la diapositiva de Índice: dos trazos finos con el degradado
+# de marca (Teal #587579 → Navy #202031) — una cruz ("Más") y una onda
+# ("Onda") — calcados de los iconos que el propio equipo pegó a mano sobre
+# el Índice (mismo trazado, mismo grosor proporcional, misma posición), así
+# que no son una forma inventada sino la que ya han aprobado visualmente.
+def _stroke_path_shape_xml(
+    shape_id: int, name: str, x_pt: float, y_pt: float, w_pt: float, h_pt: float,
+    path_w: float, path_h: float, stroke_w_local: float, subpaths: list[list[tuple]],
+) -> str:
     x, y, w, h = (pt(v) for v in (x_pt, y_pt, w_pt, h_pt))
+    stroke_emu = pt(stroke_w_local / path_w * w_pt)
+
+    def _pt_tag(tag, x_, y_):
+        return f'<a:{tag}><a:pt x="{x_:.0f}" y="{y_:.0f}"/></a:{tag}>'
+
+    paths_xml = ""
+    for sub in subpaths:
+        cmd, pts = sub[0], sub[1:]
+        if cmd == "line":
+            (x0, y0), (x1, y1) = pts
+            paths_xml += _pt_tag("moveTo", x0, y0) + _pt_tag("lnTo", x1, y1)
+        elif cmd == "bezier":
+            (x0, y0) = pts[0]
+            paths_xml += _pt_tag("moveTo", x0, y0)
+            for (cx1, cy1), (cx2, cy2), (ex, ey) in pts[1]:
+                paths_xml += (
+                    f'<a:cubicBezTo><a:pt x="{cx1:.0f}" y="{cy1:.0f}"/>'
+                    f'<a:pt x="{cx2:.0f}" y="{cy2:.0f}"/><a:pt x="{ex:.0f}" y="{ey:.0f}"/></a:cubicBezTo>'
+                )
     return (
-        f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Loop"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="{name}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
         f'<p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm>'
-        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+        f'<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="0" b="0"/>'
+        f'<a:pathLst><a:path w="{path_w:.0f}" h="{path_h:.0f}">{paths_xml}</a:path></a:pathLst></a:custGeom>'
+        f'<a:noFill/><a:ln w="{stroke_emu}" cap="rnd">'
         f'<a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="587579"/></a:gs>'
         f'<a:gs pos="100000"><a:srgbClr val="202031"/></a:gs></a:gsLst><a:lin ang="0" scaled="1"/></a:gradFill>'
-        f'<a:ln><a:noFill/></a:ln></p:spPr>'
+        f'</a:ln></p:spPr>'
         f'<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>'
     )
+
+
+def _index_flourish_xml() -> str:
+    mas = _stroke_path_shape_xml(
+        900, "Mas", 580, -78, 405, 405, path_w=90, path_h=90, stroke_w_local=10,
+        subpaths=[
+            ("line", (45, 5), (45, 85)),
+            ("line", (5, 45), (85, 45)),
+        ],
+    )
+    onda = _stroke_path_shape_xml(
+        901, "Onda", 248, 269, 783, 257, path_w=128, path_h=42, stroke_w_local=8,
+        subpaths=[
+            ("bezier", (4, 38), [
+                ((22, 38), (26, 4), (48, 4)),
+                ((70, 4), (74, 38), (96, 38)),
+                ((108, 38), (116, 26), (124, 12)),
+            ]),
+        ],
+    )
+    return mas + onda
 
 
 def _build_info_slide(
@@ -414,7 +459,15 @@ def _build_info_slide(
     s = enable_shrink_autofit(s)
     s = set_shape_text_color(s, _INFO_SLIDE_PAGE_NUM_ID, _INFO_SLIDE_PAGE_NUM_COLOR)
     if flourish:
-        s = s.replace("</p:spTree>", _loop_accent_xml(900, 200, 92, 90, 4) + "</p:spTree>")
+        # Se inserta justo DESPUÉS de <p:grpSpPr> (el primer hueco posible
+        # en <p:spTree>), no al final — en OOXML el orden del documento es
+        # el orden de apilado, así que si se añadiera al final la onda
+        # quedaría POR ENCIMA de todo, incluido el número de página, y lo
+        # taparía donde se cruzan.
+        s = re.sub(
+            r'(<p:grpSpPr\b[^>]*(?:/>|>.*?</p:grpSpPr>))',
+            r'\1' + _index_flourish_xml(), s, count=1, flags=re.DOTALL,
+        )
     _write(path, s)
 
 
