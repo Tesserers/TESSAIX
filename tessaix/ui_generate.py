@@ -18,10 +18,9 @@ def step_generate():
         ("Tipo", "Con fees" if d.get("deck_type") == "propuesta" else "Sin fees"),
         ("Sedes", "Las 3 sedes" if d.get("locations", "all") == "all" else "Solo Madrid"),
     ]
-    if is_hc_finance:
-        rows.append(("Equipo", "Con Eduardo Serrano" if d.get("include_eduardo") else "Sin Eduardo Serrano"))
-    else:
+    if not is_hc_finance:
         rows.append(("Servicios", " · ".join([SERVICES_HC.get(s, s) for s in d.get("services", [])])))
+    rows.append(("Equipo", "Con Eduardo Serrano" if d.get("include_eduardo") else "Sin Eduardo Serrano"))
     if not is_hc_finance and d.get("deck_type") == "propuesta":
         rows.append(("Garantía", f"{d.get('warranty_months', 3)} meses"))
         if d.get("fee_rate"):

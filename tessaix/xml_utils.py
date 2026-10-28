@@ -15,14 +15,60 @@ from . import text_fit
 # igual (p.ej. <a:tabLst/>, <a:theme>). El lookahead exige que justo
 # después de "a:t" venga espacio, "/" o ">" — nunca otra letra.
 _A_T_OPEN = r'<a:t(?=[\s/>])[^>]*>'
+_A_R_RE = re.compile(r'<a:r\b[^>]*>(?:(?!</a:r>).)*?</a:r>', re.DOTALL)
+_RPR_RE = re.compile(r'<a:rPr\b[^>]*(?:/>|>(?:(?!</a:rPr>).)*?</a:rPr>)', re.DOTALL)
+# Un número "suelto" dentro de una frase: dígitos con separadores de miles
+# o decimales incluidos (p.ej. "72", "36.000", "4,5") — nunca una letra ni
+# el símbolo que vaya detrás (€, %, h...), que se quedan en la tipografía
+# del texto que los rodea.
+_NUMBER_RE = re.compile(r'(\d[\d.,]*\d|\d)')
+
+
+def _manrope_rpr(rpr_xml: str) -> str:
+    """
+    Copia `rpr_xml` (el <a:rPr> de un run existente) forzando su tipografía
+    a Manrope, manteniendo todo lo demás (tamaño, color, negrita…) — regla
+    de marca: cualquier NÚMERO va siempre en Manrope, aunque esté dentro de
+    una frase en Raleway. Si el run no tenía <a:rPr> o no tenía <a:latin>,
+    se añade uno nuevo.
+    """
+    if not rpr_xml:
+        return '<a:rPr><a:latin typeface="Manrope"/></a:rPr>'
+    if '<a:latin' in rpr_xml:
+        return re.sub(r'<a:latin\s+typeface="[^"]*"', '<a:latin typeface="Manrope"', rpr_xml, count=1)
+    if rpr_xml.endswith('/>'):
+        return rpr_xml[:-2] + '><a:latin typeface="Manrope"/></a:rPr>'
+    return re.sub(r'(<a:rPr\b[^>]*>)', r'\1<a:latin typeface="Manrope"/>', rpr_xml, count=1)
+
+
+def _runs_with_manrope_numbers(text: str, rpr_xml: str) -> str:
+    """
+    Reparte `text` en los <a:r> que hagan falta: el texto normal con
+    `rpr_xml` tal cual (la tipografía que ya tenía ese run), y cualquier
+    número suelto con la misma `rpr_xml` pero en Manrope. Si no hay ningún
+    número, es un único run — igual que antes de esta regla de marca.
+    """
+    chunks = _NUMBER_RE.split(text)
+    if len(chunks) == 1:
+        return f'<a:r>{rpr_xml}<a:t xml:space="preserve">{text}</a:t></a:r>'
+    manrope_rpr = _manrope_rpr(rpr_xml)
+    runs = []
+    for i, chunk in enumerate(chunks):
+        if not chunk:
+            continue
+        rpr = manrope_rpr if i % 2 == 1 else rpr_xml
+        runs.append(f'<a:r>{rpr}<a:t xml:space="preserve">{chunk}</a:t></a:r>')
+    return ''.join(runs)
 
 
 def replace_text_in_xml(xml: str, old: str, new: str) -> str:
     """
     Reemplaza texto que puede estar repartido en varios runs <a:t> dentro de
     un mismo párrafo. Estrategia: por cada <a:p>, se consolida todo el texto,
-    se comprueba si el texto viejo está presente y, si lo está, se coloca el
-    texto completo nuevo en el primer run y se vacían los demás.
+    se comprueba si el texto viejo está presente y, si lo está, se reparte el
+    texto completo nuevo en uno o más runs a partir del primero (con su
+    mismo <a:rPr> — tamaño, color, tipografía — salvo en los números, que
+    siempre van en Manrope) y se vacían los demás.
     """
     new_esc = new.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     old_esc = old.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -39,15 +85,18 @@ def replace_text_in_xml(xml: str, old: str, new: str) -> str:
         else:
             return para  # sin coincidencia, no se toca
 
+        first_run_m = _A_R_RE.search(para)
+        rpr_m = _RPR_RE.search(first_run_m.group(0)) if first_run_m else None
+        rpr_xml = rpr_m.group(0) if rpr_m else ''
+        new_runs_xml = _runs_with_manrope_numbers(new_full, rpr_xml)
+
         count = [0]
 
-        def repl(m2):
+        def repl(rm):
             count[0] += 1
-            if count[0] == 1:
-                return f'{m2.group(1)}{new_full}{m2.group(3)}'
-            return f'{m2.group(1)}{m2.group(3)}'
+            return new_runs_xml if count[0] == 1 else ''
 
-        return re.sub(f'({_A_T_OPEN})([^<]*)(</a:t>)', repl, para)
+        return _A_R_RE.sub(repl, para)
 
     return re.sub(r'<a:p\b[^>]*>.*?</a:p>', process_para, xml, flags=re.DOTALL)
 
@@ -504,6 +553,29 @@ def remove_shape_by_id(slide_xml: str, shape_id: int) -> str:
         if n:
             return new_xml
     return slide_xml
+
+
+_SRGB_CLR_RE = re.compile(r'<a:srgbClr\s+val="[0-9A-Fa-f]{6}"\s*/>')
+
+
+def set_shape_text_color(slide_xml: str, shape_id: int, hex_color: str) -> str:
+    """
+    Fuerza el color de TODO el texto de la forma `shape_id` a `hex_color`
+    (sin "#"). Hace falta cuando una forma clonada de otra diapositiva trae
+    un color pensado para el fondo ORIGINAL (p.ej. un gris casi blanco,
+    legible sobre un fondo oscuro que esta diapositiva ya no tiene) — sin
+    esto, el texto queda prácticamente invisible sobre el nuevo fondo.
+    """
+    pattern = re.compile(
+        r'<p:sp>(?:(?!</p:sp>).)*?<p:cNvPr\b[^>]*\bid="%d"(?:(?!</p:sp>).)*?</p:sp>' % shape_id,
+        re.DOTALL,
+    )
+    m = pattern.search(slide_xml)
+    if not m:
+        return slide_xml
+    shape_xml = m.group(0)
+    new_shape_xml = _SRGB_CLR_RE.sub(f'<a:srgbClr val="{hex_color}"/>', shape_xml)
+    return slide_xml[:m.start()] + new_shape_xml + slide_xml[m.end():]
 
 
 def get_picture_frame_emu(slide_xml: str, rid: str) -> tuple[int, int] | None:

@@ -371,5 +371,7 @@ def generate_context_paragraph(data: dict) -> str | None:
             tools=[_web_search_tool(data)],
         )
     text = _text_from_response(msg).strip('"')
-    text = _truncate_wordwise(text, 600)
+    # Sin recorte de longitud: el motor de ajuste del .pptx (text_fit) tiene
+    # que encajar el párrafo COMPLETO en la diapositiva de Contexto, nunca
+    # cortarlo con "…" a mitad de frase.
     return _restore_client_name(text, cn)

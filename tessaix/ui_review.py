@@ -208,9 +208,8 @@ def step_review():
 
     _render_logo_section(data)
 
-    if is_hc_finance:
-        _render_structural_summary(data)
-        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+    _render_structural_summary(data)
+    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
     if st.session_state.content is None:
         st.markdown("Todavía no se ha generado contenido para esta propuesta.")

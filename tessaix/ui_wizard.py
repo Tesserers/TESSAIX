@@ -99,20 +99,19 @@ def step_equipo():
 
     st.markdown("### Equipo y sedes")
 
-    include_eduardo = data.get("include_eduardo", False)
     if is_hc_finance:
         st.caption(
             "El equipo de esta propuesta siempre incluye a Manuel Pina, "
             "Mónica Mayoral y Edward Manrique."
         )
-        include_eduardo = st.checkbox("Incluir también a Eduardo Serrano", value=include_eduardo)
+        default_eduardo = data.get("include_eduardo", False)
     else:
-        # El equipo ya no se elige a mano: lo decide el tipo de propuesta
-        # (de momento) — sin fee va con Eduardo Serrano, con fee va sin él.
-        if data.get("deck_type") == "propuesta":
-            st.caption("Equipo de esta propuesta (con fee): Manuel Pina y Edward Manrique.")
-        else:
-            st.caption("Equipo de esta propuesta (sin fee): Eduardo Serrano, Manuel Pina y Edward Manrique.")
+        # Por defecto, sin fee va con Eduardo Serrano y con fee va sin él
+        # (de momento) — pero sigue siendo una elección visible y editable,
+        # no una decisión oculta.
+        st.caption("Equipo de esta propuesta: Manuel Pina y Edward Manrique, con o sin Eduardo Serrano.")
+        default_eduardo = data.get("include_eduardo", data.get("deck_type") != "propuesta")
+    include_eduardo = st.checkbox("Incluir también a Eduardo Serrano", value=default_eduardo)
 
     st.markdown("---")
     st.markdown("#### Sedes a mostrar")
@@ -175,6 +174,11 @@ def step_contexto():
             reference_salary = st.text_input("SBA de referencia (€)", placeholder="Ej: 36000")
     ei = st.text_area("Info adicional (web, reunión previa, LinkedIn…)", height=90,
                        placeholder="Pega aquí todo lo que sepas del cliente…")
+    st.markdown("---")
+    include_index = st.checkbox(
+        "Incluir diapositiva de Índice",
+        value=st.session_state.form.get("include_index", True),
+    )
     cb, cn_ = st.columns([1, 4])
     with cb:
         if st.button("← Atrás"):
@@ -184,7 +188,8 @@ def step_contexto():
         if st.button("Siguiente →"):
             st.session_state.form.update({
                 "pain_points": pp, "roles_needed": rn,
-                "fee_rate": fee, "reference_salary": reference_salary, "extra_info": ei
+                "fee_rate": fee, "reference_salary": reference_salary, "extra_info": ei,
+                "include_index": include_index,
             })
             st.session_state.step = STEP_REVIEW
             st.rerun()

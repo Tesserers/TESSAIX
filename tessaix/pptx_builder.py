@@ -57,6 +57,7 @@ from .xml_utils import (
     replace_text_in_xml,
     resolve_rel_target,
     resolve_rid_for_target,
+    set_shape_text_color,
     shift_shape_y,
 )
 
@@ -158,6 +159,19 @@ _CONTEXT_SLIDE_FILE = "slide91.xml"
 _CLONE_BODY_BASE_SCALE = 1.3
 _CLONE_BODY_MIN_FONT_PT = 14.0
 _CLONE_BODY_PRESET_HEIGHT_PT = 330.0
+# Tope de crecimiento: hay hueco real entre el cuerpo (empieza sobre
+# Y=124pt) y el número de página (Y=495pt) — de sobra para un párrafo
+# largo, pero sin pasarse de ahí (la diapositiva mide 540pt de alto), así
+# que el texto se encoge (hasta el mínimo absoluto si hace falta) en vez
+# de desbordar la diapositiva o cortarse con "…".
+_CLONE_BODY_GROW_CEILING_PT = 355.0
+# El número de página de la diapositiva donante viene en un gris casi
+# blanco (E6ECEC) porque allí se lee sobre un fondo oscuro que esta
+# diapositiva clonada no tiene (esa decoración se quita al podar las
+# tarjetas propias) — sin recolorearlo, queda invisible sobre fondo
+# blanco. Mismo id en las dos plantillas.
+_INFO_SLIDE_PAGE_NUM_ID = 29
+_INFO_SLIDE_PAGE_NUM_COLOR = "202031"
 
 # A diferencia de la plantilla anterior, aquí el título y el cuerpo de
 # cada tarjeta son DOS formas independientes apiladas (no un único cuadro
@@ -341,8 +355,10 @@ def _build_info_slide(
     s = replace_text_and_fit(
         s, donor["body_old"], body,
         base_scale=body_base_scale, min_font_pt=body_min_font_pt, preset_height_pt=body_preset_height_pt,
+        grow_ceiling_pt=_CLONE_BODY_GROW_CEILING_PT,
     )
     s = enable_shrink_autofit(s)
+    s = set_shape_text_color(s, _INFO_SLIDE_PAGE_NUM_ID, _INFO_SLIDE_PAGE_NUM_COLOR)
     _write(path, s)
 
 
@@ -367,14 +383,22 @@ def _index_items(data: dict) -> list[str]:
 
 
 def _build_index_and_context(data: dict, unpack: Path, donor: dict) -> None:
-    items = _index_items(data)
-    index_body = "\n".join(f"{i:02d}.  {name}" for i, name in enumerate(items, 1))
-    _build_info_slide(
-        unpack, donor, _INDEX_SLIDE_FILE, "slide1.xml",
-        eyebrow="NOSOTROS", title="Índice", body=index_body,
-        body_base_scale=_CLONE_BODY_BASE_SCALE, body_min_font_pt=_CLONE_BODY_MIN_FONT_PT,
-        body_preset_height_pt=_CLONE_BODY_PRESET_HEIGHT_PT,
-    )
+    # El Índice es opcional (se pregunta en el wizard); el Contexto no — si
+    # no hay Índice, el Contexto pasa a ir justo tras la portada y es él
+    # quien empieza la numeración de página.
+    include_index = data.get("include_index", True)
+    context_insert_after = "slide1.xml"
+
+    if include_index:
+        items = _index_items(data)
+        index_body = "\n".join(f"{i:02d}.  {name}" for i, name in enumerate(items, 1))
+        _build_info_slide(
+            unpack, donor, _INDEX_SLIDE_FILE, "slide1.xml",
+            eyebrow="NOSOTROS", title="Índice", body=index_body,
+            body_base_scale=_CLONE_BODY_BASE_SCALE, body_min_font_pt=_CLONE_BODY_MIN_FONT_PT,
+            body_preset_height_pt=_CLONE_BODY_PRESET_HEIGHT_PT,
+        )
+        context_insert_after = _INDEX_SLIDE_FILE
 
     try:
         context_body = generate_context_paragraph(data)
@@ -385,7 +409,7 @@ def _build_index_and_context(data: dict, unpack: Path, donor: dict) -> None:
         f"a sus necesidades actuales con un equipo senior y un enfoque directo."
     )
     _build_info_slide(
-        unpack, donor, _CONTEXT_SLIDE_FILE, _INDEX_SLIDE_FILE,
+        unpack, donor, _CONTEXT_SLIDE_FILE, context_insert_after,
         eyebrow="NOSOTROS", title="Contexto", body=context_body,
         body_base_scale=_CLONE_BODY_BASE_SCALE, body_min_font_pt=_CLONE_BODY_MIN_FONT_PT,
         body_preset_height_pt=_CLONE_BODY_PRESET_HEIGHT_PT,
@@ -515,11 +539,12 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
     show_all_locations = data.get("locations", "all") != LOCATIONS_MADRID_ONLY
     drop_location = HC_LOCATION_SLIDES["madrid" if show_all_locations else "all"]
 
-    # Equipo: ya no se pregunta en el wizard — lo decide el tipo de
-    # propuesta. Sin fee (presentación) va con Eduardo Serrano; con fee
-    # (propuesta) va sin él, de momento (ver conversación con el equipo).
     include_fee = data.get("deck_type") == "propuesta"
-    drop_team = HC_TEAM_SLIDES["con_eduardo" if include_fee else "sin_eduardo"]
+    # Equipo: elección visible en el wizard (con valor por defecto según el
+    # tipo de propuesta — sin fee con Eduardo Serrano, con fee sin él — pero
+    # editable, no una decisión oculta).
+    include_eduardo = bool(data.get("include_eduardo", not include_fee))
+    drop_team = HC_TEAM_SLIDES["sin_eduardo" if include_eduardo else "con_eduardo"]
 
     _remove_slides(unpack, [drop_location, drop_team])
 
