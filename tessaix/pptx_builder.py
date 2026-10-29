@@ -93,7 +93,8 @@ HC_TEAM_PEOPLE_SHAPES = {
     "edward": (17, 18, 19, 20),
 }
 HC_TEAM_PEOPLE_LABELS = {"eduardo": "Eduardo Serrano", "manuel": "Manuel Pina", "edward": "Edward Manrique"}
-HC_TEAM_X_RANGE = (pt(43), pt(647))
+HC_TEAM_NATIVE_X = [pt(43), pt(345), pt(647)]
+HC_TEAM_BOX_W = pt(270)
 HC_NEXT_STEPS_SLIDE = "slide12.xml"
 HC_TERMS_SLIDES = ["slide13.xml", "slide14.xml"]
 HC_FEE_SLIDE = "slide15.xml"
@@ -124,7 +125,8 @@ HCF_TEAM_PEOPLE_LABELS = {
     "manuel": "Manuel Pina", "eduardo": "Eduardo Serrano",
     "monica": "Mónica Mayoral", "edward": "Edward Manrique",
 }
-HCF_TEAM_X_RANGE = (pt(43), pt(723))
+HCF_TEAM_NATIVE_X = [pt(43), pt(270), pt(496), pt(723)]
+HCF_TEAM_BOX_W = pt(194)
 HCF_SLIDES_DYNAMIC_TEXT = ["slide5.xml", "slide6.xml", "slide7.xml", "slide8.xml"]
 
 # Texto exacto (tal y como está en la plantilla real) del bloque de
@@ -676,28 +678,31 @@ def _grow_cascade(slide_xml: str, items: list[tuple[str | None, str | None, int,
     return slide_xml, total_delta
 
 
-def _even_slot_positions(first_emu: int, last_emu: int, n: int) -> list[int]:
-    """n posiciones X repartidas uniformemente entre `first_emu` y
-    `last_emu` (los dos huecos de los extremos del equipo al completo) —
-    con 1 persona, el centro; con 2, los dos extremos; con el nº total de
-    personas, las posiciones nativas de la plantilla."""
-    if n <= 1:
-        return [(first_emu + last_emu) // 2]
-    step = (last_emu - first_emu) / (n - 1)
-    return [round(first_emu + i * step) for i in range(n)]
+_TEAM_SLOT_GAP = pt(64)
+
+
+def _centered_slot_positions(box_w_emu: int, n: int) -> list[int]:
+    """n bloques de ancho `box_w_emu`, separados por un hueco fijo
+    (_TEAM_SLOT_GAP) y centrados en el ancho de la diapositiva (960pt) —
+    así es como el equipo quedó al mover a mano un equipo de 2 (ver
+    conversación): juntos y centrados, no repartidos de borde a borde."""
+    total = n * box_w_emu + (n - 1) * _TEAM_SLOT_GAP
+    start = (pt(960) - total) // 2
+    return [start + i * (box_w_emu + _TEAM_SLOT_GAP) for i in range(n)]
 
 
 def _build_team_slide(
     unpack: Path, slide_file: str, people_order: list[str], people_shapes: dict[str, tuple[int, ...]],
-    x_range: tuple[int, int], selected: set[str] | list[str],
+    native_x: list[int], box_w_emu: int, selected: set[str] | list[str],
 ) -> None:
     """
     Pone en la diapositiva de equipo (`slide_file`, el superconjunto con
     TODAS las personas) solo a quien esté en `selected` — se quita el
-    bloque (foto + nombre + cargo + bio) de quien no esté, y a quien se
-    queda se le recoloca en el hueco que le toque según cuántos haya en
-    total (ver _even_slot_positions), siempre en el mismo orden
-    (`people_order`) sea cual sea el orden en que se hayan elegido.
+    bloque (foto + nombre + cargo + bio) de quien no esté. Si se queda el
+    equipo al completo, cada quien en su hueco nativo de la plantilla; si
+    se queda un subconjunto, se recolocan juntos y centrados (ver
+    _centered_slot_positions) — siempre en el mismo orden (`people_order`)
+    sea cual sea el orden en que se hayan elegido.
     """
     canonical = [p for p in people_order if p in selected]
     path = unpack / "ppt" / "slides" / slide_file
@@ -706,7 +711,11 @@ def _build_team_slide(
         if p not in canonical:
             for shape_id in people_shapes[p]:
                 s = remove_shape_by_id(s, shape_id)
-    for p, x in zip(canonical, _even_slot_positions(x_range[0], x_range[1], len(canonical))):
+    if len(canonical) == len(people_order):
+        xs = native_x
+    else:
+        xs = _centered_slot_positions(box_w_emu, len(canonical))
+    for p, x in zip(canonical, xs):
         for shape_id in people_shapes[p]:
             s = set_shape_pos(s, shape_id, x_emu=x)
     _write(path, s)
@@ -733,7 +742,7 @@ def _build_hc(data: dict, content: dict, unpack: Path) -> None:
     if not team_people:
         _remove_slides(unpack, [HC_TEAM_SLIDE])
     else:
-        _build_team_slide(unpack, HC_TEAM_SLIDE, HC_TEAM_PEOPLE_ORDER, HC_TEAM_PEOPLE_SHAPES, HC_TEAM_X_RANGE, team_people)
+        _build_team_slide(unpack, HC_TEAM_SLIDE, HC_TEAM_PEOPLE_ORDER, HC_TEAM_PEOPLE_SHAPES, HC_TEAM_NATIVE_X, HC_TEAM_BOX_W, team_people)
 
     why = content.get("why_tessera", {})
     svcs = content.get("services", {})
@@ -870,7 +879,7 @@ def _build_hc_finance(data: dict, content: dict, unpack: Path) -> None:
     if not team_people:
         _remove_slides(unpack, [HCF_TEAM_SLIDE])
     else:
-        _build_team_slide(unpack, HCF_TEAM_SLIDE, HCF_TEAM_PEOPLE_ORDER, HCF_TEAM_PEOPLE_SHAPES, HCF_TEAM_X_RANGE, team_people)
+        _build_team_slide(unpack, HCF_TEAM_SLIDE, HCF_TEAM_PEOPLE_ORDER, HCF_TEAM_PEOPLE_SHAPES, HCF_TEAM_NATIVE_X, HCF_TEAM_BOX_W, team_people)
 
     why = content.get("why_tessera", {})
     if why:
